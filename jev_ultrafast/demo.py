@@ -15,7 +15,8 @@ from .flight_date import flight_departure
 from .questions import MAX_STEPS
 
 ROOT = Path(__file__).parent
-PORT = int(os.environ.get("TYPESAFE_DEMO_PORT", "8766"))
+DEFAULT_PORT = 8766
+PORT = DEFAULT_PORT
 ORIGIN = f"http://127.0.0.1:{PORT}"
 TOKEN = secrets.token_urlsafe(32)
 LOCK = threading.Lock()
@@ -44,6 +45,14 @@ def load_environment():
             value = value[1:-1]
         if key:
             os.environ.setdefault(key, value)
+
+
+def configure_environment():
+    """Load local settings before deriving values used by the demo server."""
+    global PORT, ORIGIN
+    load_environment()
+    PORT = int(os.environ.get("TYPESAFE_DEMO_PORT", str(DEFAULT_PORT)))
+    ORIGIN = f"http://127.0.0.1:{PORT}"
 
 
 def response_state(state=None):
@@ -162,7 +171,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
-    load_environment()
+    configure_environment()
     atexit.register(close_browser)
     server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     print(f"Jev Ultrafast: {ORIGIN}", flush=True)
