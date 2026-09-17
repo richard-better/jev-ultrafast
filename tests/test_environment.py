@@ -14,7 +14,8 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setattr(os, "environ", {})
 
     def load(text):
-        (tmp_path / ".env").write_text(text, encoding="utf-8")
+        data = text if isinstance(text, bytes) else text.encode("utf-8")
+        (tmp_path / ".env").write_bytes(data)
         load_environment()
         return os.environ
 
@@ -84,3 +85,11 @@ def test_a_missing_file_is_not_an_error(tmp_path, monkeypatch):
     monkeypatch.setattr(os, "environ", {})
     load_environment()
     assert "TYPESAFE_API_KEY" not in os.environ
+
+
+def test_a_byte_order_mark_is_not_part_of_the_first_key(env):
+    """Editors on Windows save UTF-8 with a BOM by default, which hid the first credential."""
+    loaded = env("TYPESAFE_API_KEY=abc123".encode("utf-8-sig"))
+    assert loaded["TYPESAFE_API_KEY"] == "abc123"
+    assert all(not key.startswith(chr(0xFEFF)) for key in loaded)
+

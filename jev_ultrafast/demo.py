@@ -31,7 +31,9 @@ def load_environment():
     path = Path.cwd() / ".env"
     if not path.exists():
         return
-    for line in path.read_text(encoding="utf-8").splitlines():
+    # utf-8-sig also drops a leading byte-order mark, which editors on Windows write by
+    # default and which would otherwise become part of the first key.
+    for line in path.read_text(encoding="utf-8-sig").splitlines():
         entry = line.strip().removeprefix("export ").strip()
         if not entry or entry.startswith("#") or "=" not in entry:
             continue
