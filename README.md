@@ -158,7 +158,9 @@ model calls. Each case checks the actual DOM event count before and after a retr
 
 `uv run python scripts/check_selects.py` checks native dropdown identity and freshness in a local browser, including duplicate values and stale options, without model calls.
 
-`uv run python scripts/check_navigation.py` checks delayed links, redirects, cancelled navigation, and fast-path exceptions in local browser fixtures without model calls. The link wait is a bounded opportunity for navigation to begin, not proof that a destination has finished loading or that the goal is complete; final outcomes still require independent verification.
+`uv run python scripts/check_navigation.py` checks delayed links, HTTP and same-document redirects, named targets, cancelled navigation, and fast-path exceptions in local browser fixtures without model calls. The link wait is a bounded opportunity for navigation to begin, not proof that a destination has finished loading or that the goal is complete; final outcomes still require independent verification.
+
+A same-tab link to a different URL that cancels navigation entirely can consume the full 1,500 ms wait. `preventDefault()` alone cannot distinguish that case from client-side routing that starts navigation later. This latency tradeoff is covered by both the cancelled-link and delayed-link fixtures; neither case replays the click. The navigation wait does not scan autocomplete options.
 
 ---
 
