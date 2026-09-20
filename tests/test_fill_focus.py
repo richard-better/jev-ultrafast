@@ -73,4 +73,6 @@ def test_focused_fill_inserts_the_requested_text_once(monkeypatch):
     assert [call.kwargs["type"] for call in calls.call_args_list if call.args[0] == "Input.dispatchKeyEvent"] == [
         "keyDown", "keyUp",
     ]
+    key_down = next(call for call in calls.call_args_list if call.kwargs.get("type") == "keyDown")
+    assert key_down.kwargs["commands"] == ["selectAll"]
     assert calls.call_args.kwargs == {"session_id": "test", "text": "replacement"}

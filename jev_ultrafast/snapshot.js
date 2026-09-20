@@ -41,9 +41,14 @@
     }
     return null;
   };
-  cache.editable=e=>!e.readOnly && !e.closest('[aria-readonly="true"]') &&
-    (e.isContentEditable || e.tagName==='TEXTAREA' ||
-      (e.tagName==='INPUT' && ['text','search','email','url','tel','number'].includes(e.type)));
+  cache.editable=e=>{
+    const rname=role(e);
+    return !e.readOnly && !e.closest('[aria-readonly="true"]') &&
+      (['textbox','searchbox','spinbutton'].includes(rname) ||
+        (rname==='combobox' && ['INPUT','TEXTAREA'].includes(e.tagName))) &&
+      (e.isContentEditable || e.tagName==='TEXTAREA' ||
+        (e.tagName==='INPUT' && ['text','search','email','url','tel','number'].includes(e.type)));
+  };
   cache.pageKey=()=>[performance.timeOrigin,location.href,scrollX,scrollY,innerWidth,innerHeight,
     [...document.querySelectorAll('input,textarea,select')].filter(safe)
       .map(e=>[identity(e),e.value,e.checked,e.selectedIndex,e.disabled,e.readOnly])];

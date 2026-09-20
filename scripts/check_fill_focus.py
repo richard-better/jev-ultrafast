@@ -60,15 +60,20 @@ def main():
     ]
     browser = Browser("about:blank")
     failures = []
+    click_only_fields = (
+        '<div role="textbox" tabindex="0" aria-label="Target">original</div>',
+        '<input type="checkbox" role="textbox" aria-label="Target">',
+        '<input type="text" role="button" aria-label="Target">',
+        '<div contenteditable="true" role="button" aria-label="Target">original</div>',
+        '<div contenteditable="true" role="checkbox" aria-label="Target">original</div>',
+        '<div contenteditable="true" role="option" aria-label="Target">original</div>',
+    )
     try:
-        for field in (
-            '<div role="textbox" tabindex="0" aria-label="Target">original</div>',
-            '<input type="checkbox" role="textbox" aria-label="Target">',
-        ):
+        for field in click_only_fields:
             browser.evaluate("document.body.innerHTML=" + json.dumps(field))
             page = browser.observe(screenshot=False)
             assert {a["kind"] for a in page["actions"] if a["label"] == "Target"} == {"click"}
-            print("PASS: non-editable ARIA textbox only offers click")
+            print("PASS: control without text-entry support only offers click")
         for label, field, setup, rejected in cases:
             try:
                 check(browser, field, setup, rejected)
@@ -79,7 +84,7 @@ def main():
     finally:
         browser.close()
     assert not failures, failures
-    print(f"PASS: {len(cases) + 2} text targeting checks; no model calls")
+    print(f"PASS: {len(cases) + len(click_only_fields)} text targeting checks; no model calls")
 
 
 if __name__ == "__main__":
