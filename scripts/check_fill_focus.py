@@ -61,6 +61,14 @@ def main():
     browser = Browser("about:blank")
     failures = []
     try:
+        for field in (
+            '<div role="textbox" tabindex="0" aria-label="Target">original</div>',
+            '<input type="checkbox" role="textbox" aria-label="Target">',
+        ):
+            browser.evaluate("document.body.innerHTML=" + json.dumps(field))
+            page = browser.observe(screenshot=False)
+            assert {a["kind"] for a in page["actions"] if a["label"] == "Target"} == {"click"}
+            print("PASS: non-editable ARIA textbox only offers click")
         for label, field, setup, rejected in cases:
             try:
                 check(browser, field, setup, rejected)
@@ -71,7 +79,7 @@ def main():
     finally:
         browser.close()
     assert not failures, failures
-    print(f"PASS: {len(cases)} text targeting checks; no model calls")
+    print(f"PASS: {len(cases) + 2} text targeting checks; no model calls")
 
 
 if __name__ == "__main__":

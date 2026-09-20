@@ -49,3 +49,28 @@ def test_click_does_not_require_keyboard_focus(monkeypatch):
     assert [call.args[0] for call in cdp.call_args_list] == [
         "Runtime.evaluate", "Input.dispatchMouseEvent", "Input.dispatchMouseEvent",
     ]
+
+
+def test_focused_fill_inserts_the_requested_text_once(monkeypatch):
+    evaluations = iter([{"x": 40, "y": 40}, True, True])
+
+    def cdp(method, **_params):
+        return {"result": {"value": next(evaluations)}} if method == "Runtime.evaluate" else {}
+
+    calls = Mock(side_effect=cdp)
+    monkeypatch.setattr(browser, "cdp", calls)
+    result = browser.browser_operation({
+        "operation": "act", "session": "test", "action": {"id": "e1", "kind": "fill", "node": 1},
+        "text": "replacement",
+    })
+
+    assert result == {"executed": "e1"}
+    assert [call.args[0] for call in calls.call_args_list] == [
+        "Runtime.evaluate", "Input.dispatchMouseEvent", "Input.dispatchMouseEvent",
+        "Runtime.evaluate", "Input.dispatchKeyEvent", "Input.dispatchKeyEvent",
+        "Runtime.evaluate", "Input.insertText",
+    ]
+    assert [call.kwargs["type"] for call in calls.call_args_list if call.args[0] == "Input.dispatchKeyEvent"] == [
+        "keyDown", "keyUp",
+    ]
+    assert calls.call_args.kwargs == {"session_id": "test", "text": "replacement"}
