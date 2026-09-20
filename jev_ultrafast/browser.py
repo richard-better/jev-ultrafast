@@ -167,6 +167,25 @@ def browser_operation(request):
                 for event in ("mousePressed", "mouseReleased"):
                     call("Input.dispatchMouseEvent", type=event, x=x, y=y, button="left", clickCount=1)
                 if kind == "fill":
+                    def require_text_focus():
+                        try:
+                            focused = evaluate("""(node => {
+                              const e=window.__jevFast?.nodes.get(node);
+                              return !!(e?.isConnected && document.activeElement===e &&
+                                !e.readOnly && !e.matches(':disabled') &&
+                                !e.closest('[aria-disabled="true"],[aria-readonly="true"],[inert]') &&
+                                e.checkVisibility({checkOpacity:true,checkVisibilityCSS:true}) &&
+                                (e.isContentEditable || e.tagName==='TEXTAREA' ||
+                                  (e.tagName==='INPUT' &&
+                                    ['text','search','email','url','tel','number'].includes(e.type))));
+                            })(""" + str(action["node"]) + ")")
+                        except StalePage:
+                            focused = False
+                        if not focused:
+                            # The click already ran. Never retry a partially executed fill as stale.
+                            raise RuntimeError("Text target changed or lost focus; inspect before retrying.")
+
+                    require_text_focus()
                     call(
                         "Input.dispatchKeyEvent",
                         type="keyDown",
@@ -182,6 +201,8 @@ def browser_operation(request):
                         code="KeyA",
                         modifiers=4 if sys.platform == "darwin" else 2,
                     )
+                    # Page key handlers can redirect focus during Select All as well.
+                    require_text_focus()
                     call("Input.insertText", text=request["text"])
         return {"executed": action["id"]}
 
