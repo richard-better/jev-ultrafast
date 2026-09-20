@@ -478,3 +478,33 @@ def test_editing_a_snapshot_cannot_change_the_agent(runner):
     snapshot["text_calls"][0]["usage"]["total_tokens"] = 0
 
     assert {key: value for key, value in runner.state.items() if key != "browser"} == expected
+
+
+@pytest.mark.parametrize("action", ["wait", "DONE", "stale"])
+def test_tick_exports_only_one_snapshot(runner, monkeypatch, action):
+    monkeypatch.setattr(loop, "choose", Mock(return_value=decision(action)))
+    if action == "stale":
+        runner.state["browser"].fresh.side_effect = StalePage("Document navigating")
+    snapshot = Mock(wraps=runner.snapshot)
+    monkeypatch.setattr(runner, "snapshot", snapshot)
+
+    result = runner.command("tick")
+
+    snapshot.assert_called_once_with()
+    assert result["status"] == ("done" if action == "DONE" else "ready")
+
+
+def test_inspector_reuses_the_command_snapshot(runner, monkeypatch):
+    from jev_ultrafast import demo
+
+    monkeypatch.setattr(loop, "choose", Mock(return_value=decision("wait")))
+    monkeypatch.setattr(demo, "AGENT", runner)
+    snapshot = Mock(wraps=runner.snapshot)
+    monkeypatch.setattr(runner, "snapshot", snapshot)
+
+    result = demo.command("tick", {})
+
+    snapshot.assert_called_once_with()
+    assert result["status"] == "ready"
+    assert len(result["history"]) == 1
+    assert result["max_steps"] == loop.MAX_STEPS
