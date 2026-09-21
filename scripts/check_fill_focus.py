@@ -70,10 +70,16 @@ def main():
     )
     try:
         for field in click_only_fields:
-            browser.evaluate("document.body.innerHTML=" + json.dumps(field))
-            page = browser.observe(screenshot=False)
-            assert {a["kind"] for a in page["actions"] if a["label"] == "Target"} == {"click"}
-            print("PASS: control without text-entry support only offers click")
+            label = f"click-only control: {field}"
+            try:
+                browser.evaluate("document.body.innerHTML=" + json.dumps(field))
+                page = browser.observe(screenshot=False)
+                kinds = {a["kind"] for a in page["actions"] if a["label"] == "Target"}
+                assert kinds == {"click"}, kinds
+                print("PASS:", label)
+            except (AssertionError, ValueError, RuntimeError) as error:
+                failures.append(label)
+                print("FAIL:", label, str(error))
         for label, field, setup, rejected in cases:
             try:
                 check(browser, field, setup, rejected)
@@ -83,8 +89,9 @@ def main():
                 print("FAIL:", label, str(error))
     finally:
         browser.close()
+    total = len(cases) + len(click_only_fields)
+    print(f"{total - len(failures)}/{total} text targeting checks passed; no model calls")
     assert not failures, failures
-    print(f"PASS: {len(cases) + len(click_only_fields)} text targeting checks; no model calls")
 
 
 if __name__ == "__main__":
