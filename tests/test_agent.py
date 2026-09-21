@@ -614,14 +614,27 @@ def provider(monkeypatch, response=None, error=None):
 
 
 def test_a_non_json_provider_reply_reports_that_nothing_ran(monkeypatch):
-    """A proxy or captive portal answers 200 with HTML, and the demo shows that text verbatim."""
+    """The parser error is replaced by one that states no browser action was executed."""
     provider(monkeypatch, error=json.JSONDecodeError("Expecting value", "<html>", 0))
     with pytest.raises(RuntimeError, match="no action executed"):
         model.post_json("https://provider.test", "key", {})
 
 
-@pytest.mark.parametrize("payload", [{}, {"answers": None}, {"answers": []}, {"answers": "ok"}])
-def test_a_reply_without_answers_is_an_invalid_response_not_a_crash(monkeypatch, payload):
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {},
+        {"answers": None},
+        {"answers": []},
+        {"answers": "ok"},
+        {"answers": {}},
+        [],
+        "ok",
+        None,
+        7,
+    ],
+)
+def test_a_reply_that_is_not_an_envelope_is_an_invalid_response_not_a_crash(monkeypatch, payload):
     provider(monkeypatch, response=payload)
     monkeypatch.setenv("TYPESAFE_API_KEY", "test-key")
     with pytest.raises(ValueError, match="no action executed"):
@@ -634,3 +647,13 @@ def test_an_empty_choices_array_reports_that_nothing_was_typed(monkeypatch):
     monkeypatch.setenv("TEXT_MODEL_API_KEY", "test-key")
     with pytest.raises(ValueError, match="nothing typed"):
         model.field_text({"goal": "Find a book", "field": {}})
+
+
+def test_a_reply_missing_the_model_name_is_rejected(monkeypatch):
+    """Answers alone are not an envelope: the decision record has to say which model answered."""
+    _elements, targets, controls = model.action_space(page()["actions"])
+    operations = {*targets, *controls, "DONE", "BLOCKED"}
+    provider(monkeypatch, response={"answers": {"operation": choice(operations, "DONE")}})
+    monkeypatch.setenv("TYPESAFE_API_KEY", "test-key")
+    with pytest.raises(ValueError, match="no action executed"):
+        model.choose(page(), "Find a book", [])

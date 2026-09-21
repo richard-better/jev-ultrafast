@@ -126,9 +126,11 @@ def choose(state, goal, history):
     }
     started = time.perf_counter()
     result = post_json("https://api.typesafe.ai/v1/systemone", os.environ["TYPESAFE_API_KEY"], body)
-    answers = result.get("answers")
-    if not isinstance(answers, dict):
+    # A reply can be valid JSON without being an envelope at all: a bare array, string or
+    # null answers .get with an AttributeError, which is not what the caller is told to expect.
+    if not isinstance(result, dict) or not isinstance(result.get("answers"), dict) or "model" not in result:
         raise ValueError("Invalid TypeSafe response; no action executed.")
+    answers = result["answers"]
     operation_answer = validate_choice(answers.get("operation", {}), operations)
     operation = operation_answer["choice"]
     target = None
@@ -153,7 +155,7 @@ def choose(state, goal, history):
         "target_probabilities": target_answer["probabilities"] if target_answer else {},
         "target_confidence": target_answer["confidence"] if target_answer else None,
         "raw_answers": answers,
-        "model": result.get("model"),
+        "model": result["model"],
         "usage": result.get("usage", {}),
         "latency_ms": round((time.perf_counter() - started) * 1000),
         "request": body,
