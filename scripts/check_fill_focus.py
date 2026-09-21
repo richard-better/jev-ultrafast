@@ -60,6 +60,7 @@ def main():
     ]
     browser = Browser("about:blank")
     failures = []
+    passed = 0
     click_only_fields = (
         '<div role="textbox" tabindex="0" aria-label="Target">original</div>',
         '<input type="checkbox" role="textbox" aria-label="Target">',
@@ -76,6 +77,7 @@ def main():
                 page = browser.observe(screenshot=False)
                 kinds = {a["kind"] for a in page["actions"] if a["label"] == "Target"}
                 assert kinds == {"click"}, kinds
+                passed += 1
                 print("PASS:", label)
             except (AssertionError, ValueError, RuntimeError) as error:
                 failures.append(label)
@@ -83,14 +85,19 @@ def main():
         for label, field, setup, rejected in cases:
             try:
                 check(browser, field, setup, rejected)
+                passed += 1
                 print("PASS:", label)
             except (AssertionError, ValueError, RuntimeError) as error:
                 failures.append(label)
                 print("FAIL:", label, str(error))
     finally:
-        browser.close()
-    total = len(cases) + len(click_only_fields)
-    print(f"{total - len(failures)}/{total} text targeting checks passed; no model calls")
+        total = len(cases) + len(click_only_fields)
+        print(f"{passed}/{total} text targeting checks passed; no model calls")
+        try:
+            browser.close()
+        except Exception as error:
+            failures.append("browser cleanup")
+            print("FAIL: browser cleanup", str(error))
     assert not failures, failures
 
 
