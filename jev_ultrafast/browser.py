@@ -11,7 +11,7 @@ from browser_harness.admin import daemon_browser_ready, ensure_daemon
 from browser_harness.helpers import cdp
 
 # Atomically read visible content and controls, preserving actual DOM node identity.
-READ_STATE = Path(__file__).with_name("snapshot.js").read_text()
+READ_STATE = Path(__file__).with_name("snapshot.js").read_text(encoding="utf-8")
 MARKER = f"(() => {{ const state={READ_STATE}; return state?.marker ?? null; }})()"
 CDP_RESPONSE_TIMEOUT = 30  # A deadline, not a delay: fast responses still return immediately.
 
