@@ -44,6 +44,7 @@ function controls() {
 }
 async function perform(fn, label) {
   if (busy) return;
+  const historyLength = state?.history?.length ?? 0;
   busy = true;
   $("error").hidden = true;
   controls();
@@ -60,7 +61,9 @@ async function perform(fn, label) {
     }
     $("error").textContent = error.message;
     $("error").hidden = false;
-    $("status").textContent = state?.history?.at(-1)?.execution === "unknown"
+    const interrupted = (state?.history?.length ?? 0) > historyLength &&
+      state.history.at(-1).execution === "unknown";
+    $("status").textContent = interrupted
       ? "Stopped · inspect the interrupted action"
       : "Paused · needs attention";
   } finally {

@@ -65,6 +65,8 @@ def check(kind):
                 agent.command("tick")
             except ValueError as error:
                 assert "stopped" in str(error)
+            else:
+                raise AssertionError("A stopped run accepted another tick")
             count = agent.browser.evaluate(f"window.{counter}")
             assert count == 1, f"{kind}: interrupted action replayed; actual DOM event count={count}"
             assert choose.call_count == 1
