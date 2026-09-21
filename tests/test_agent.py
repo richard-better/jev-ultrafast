@@ -604,3 +604,33 @@ def test_tick_recovery_never_revives_a_stalled_run(runner):
     runner.command("tick")
     assert runner.state["status"] == "blocked"
     runner.state["browser"].act.assert_not_called()
+
+
+def provider(monkeypatch, response=None, error=None):
+    """Answer one model call with a chosen payload, without touching the network."""
+    reply = Mock(status_code=200, is_error=False)
+    reply.json = Mock(side_effect=error) if error else Mock(return_value=response)
+    monkeypatch.setattr(model, "CLIENT", Mock(post=Mock(return_value=reply)))
+
+
+def test_a_non_json_provider_reply_reports_that_nothing_ran(monkeypatch):
+    """A proxy or captive portal answers 200 with HTML, and the demo shows that text verbatim."""
+    provider(monkeypatch, error=json.JSONDecodeError("Expecting value", "<html>", 0))
+    with pytest.raises(RuntimeError, match="no action executed"):
+        model.post_json("https://provider.test", "key", {})
+
+
+@pytest.mark.parametrize("payload", [{}, {"answers": None}, {"answers": []}, {"answers": "ok"}])
+def test_a_reply_without_answers_is_an_invalid_response_not_a_crash(monkeypatch, payload):
+    provider(monkeypatch, response=payload)
+    monkeypatch.setenv("TYPESAFE_API_KEY", "test-key")
+    with pytest.raises(ValueError, match="no action executed"):
+        model.choose(page(), "Find a book", [])
+
+
+def test_an_empty_choices_array_reports_that_nothing_was_typed(monkeypatch):
+    """Some providers return no choices at all when a response is filtered."""
+    provider(monkeypatch, response={"choices": []})
+    monkeypatch.setenv("TEXT_MODEL_API_KEY", "test-key")
+    with pytest.raises(ValueError, match="nothing typed"):
+        model.field_text({"goal": "Find a book", "field": {}})
