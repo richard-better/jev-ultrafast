@@ -42,10 +42,11 @@ class Browser:
                     break
                 time.sleep(0.02)
         except BaseException:
-            # A failure to close must not replace the error the caller needs to see.
+            # Nothing that goes wrong while closing may replace the error the caller needs
+            # to see, including a second interrupt landing during the close itself.
             try:
                 self.close()
-            except Exception:
+            except BaseException:
                 pass
             raise
 

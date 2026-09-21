@@ -718,7 +718,16 @@ def start(monkeypatch, fail_at, error=RuntimeError("start failed"), on_close=Non
     return browser.Browser, calls
 
 
-@pytest.mark.parametrize("fail_at", ["Target.attachToTarget", "Page.navigate", "Runtime.evaluate"])
+@pytest.mark.parametrize(
+    "fail_at",
+    [
+        "Target.attachToTarget",
+        "Emulation.setDeviceMetricsOverride",
+        "Emulation.setFocusEmulationEnabled",
+        "Page.navigate",
+        "Runtime.evaluate",
+    ],
+)
 def test_a_failed_start_closes_the_tab_it_opened(monkeypatch, fail_at):
     """The tab outlives the error otherwise: no caller ever receives the Browser that owns it."""
     Browser, calls = start(monkeypatch, fail_at)
@@ -738,6 +747,14 @@ def test_an_interrupt_during_the_readiness_wait_closes_the_tab(monkeypatch):
 def test_a_failed_close_does_not_replace_the_error_that_caused_it(monkeypatch):
     Browser, _ = start(
         monkeypatch, "Page.navigate", error=RuntimeError("bad URL"), on_close=RuntimeError("tab already gone")
+    )
+    with pytest.raises(RuntimeError, match="bad URL"):
+        Browser("https://example.test/")
+
+
+def test_an_interrupt_while_closing_does_not_replace_the_original_error(monkeypatch):
+    Browser, _ = start(
+        monkeypatch, "Page.navigate", error=RuntimeError("bad URL"), on_close=KeyboardInterrupt()
     )
     with pytest.raises(RuntimeError, match="bad URL"):
         Browser("https://example.test/")
