@@ -90,9 +90,9 @@ def main():
             except (AssertionError, ValueError, RuntimeError) as error:
                 failures.append(label)
                 print("FAIL:", label, str(error))
-    finally:
         total = len(cases) + len(click_only_fields)
         print(f"{passed}/{total} text targeting checks passed; no model calls")
+    finally:
         try:
             browser.close()
         except Exception as error:
