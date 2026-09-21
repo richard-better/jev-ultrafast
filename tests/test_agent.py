@@ -482,7 +482,8 @@ def test_editing_a_snapshot_cannot_change_the_agent(runner):
 
 @pytest.mark.parametrize("action", ["wait", "DONE", "stale"])
 def test_tick_exports_only_one_snapshot(runner, monkeypatch, action):
-    monkeypatch.setattr(loop, "choose", Mock(return_value=decision(action)))
+    choice = "wait" if action == "stale" else action
+    monkeypatch.setattr(loop, "choose", Mock(return_value=decision(choice)))
     if action == "stale":
         runner.state["browser"].fresh.side_effect = StalePage("Document navigating")
     snapshot = Mock(wraps=runner.snapshot)
