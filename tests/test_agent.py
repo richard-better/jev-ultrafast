@@ -509,3 +509,61 @@ def test_inspector_reuses_the_command_snapshot(runner, monkeypatch):
     assert result["status"] == "ready"
     assert len(result["history"]) == 1
     assert result["max_steps"] == loop.MAX_STEPS
+
+
+def test_only_proven_progress_resets_the_no_progress_stop():
+    """Only page_changed=True counts as progress; False and None do not."""
+    assert loop.stalled(
+        [
+            {"page_changed": False, "kind": "click"},
+            {"page_changed": False, "kind": "click"},
+            {"page_changed": False, "kind": "click"},
+        ]
+    )
+    assert not loop.stalled(
+        [
+            {"page_changed": False, "kind": "click"},
+            {"page_changed": True, "kind": "click"},
+            {"page_changed": False, "kind": "click"},
+        ]
+    )
+    assert not loop.stalled(
+        [
+            {"page_changed": False, "kind": "click"},
+            {"page_changed": False, "kind": "wait"},
+            {"page_changed": False, "kind": "click"},
+        ]
+    )
+    assert not loop.stalled([{"page_changed": False, "kind": "click"}])
+
+
+def test_alternating_failed_observations_still_block_a_stalled_run(runner):
+    """Regression test for https://github.com/browser-use/jev-ultrafast/issues/94.
+
+    A failed post-action observation leaves page_changed=None. Alternating
+    None with False must still trip the three-repeat no-progress guard
+    instead of letting a stuck run spend the whole model-call budget.
+    """
+    current = runner.state["page"]
+    runner.state["browser"].observe.side_effect = [current, StalePage("changed"), current]
+    for _ in range(3):
+        runner.state["decision"] = decision("e3")
+        try:
+            runner.command("act", {"fingerprint": current["fingerprint"]})
+        except StalePage:
+            pass
+    assert [entry["page_changed"] for entry in runner.state["history"]] == [False, None, False]
+    assert runner.state["status"] == "blocked"
+
+
+def test_stale_recovery_applies_the_no_progress_stop(runner):
+    """The tick StalePage recovery must not revive a stalled run as ready."""
+    runner.state["history"] = [
+        {"page_changed": False, "kind": "click"},
+        {"page_changed": None, "kind": "click"},
+        {"page_changed": False, "kind": "click"},
+    ]
+    runner.state["browser"].fresh.side_effect = StalePage("Document navigating")
+    runner.command("tick")
+    assert runner.state["status"] == "blocked"
+    runner.state["browser"].act.assert_not_called()
