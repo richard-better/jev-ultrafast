@@ -527,6 +527,13 @@ def test_only_proven_progress_resets_the_no_progress_stop():
             {"page_changed": False, "kind": "click"},
         ]
     )
+    assert loop.stalled(
+        [
+            {"page_changed": False, "kind": "click"},
+            {"page_changed": None, "kind": "click"},
+            {"page_changed": False, "kind": "click"},
+        ]
+    )
     assert not loop.stalled(
         [
             {"page_changed": False, "kind": "click"},
@@ -564,6 +571,36 @@ def test_stale_recovery_applies_the_no_progress_stop(runner):
         {"page_changed": False, "kind": "click"},
     ]
     runner.state["browser"].fresh.side_effect = StalePage("Document navigating")
+    runner.command("tick")
+    assert runner.state["status"] == "blocked"
+    runner.state["browser"].act.assert_not_called()
+
+
+def test_failed_third_observation_still_blocks_a_stalled_run(runner):
+    """The act except-path guard: when the third post-action observation
+    itself fails, the run must still stop instead of staying ready."""
+    current = runner.state["page"]
+    runner.state["browser"].observe.side_effect = [current, current, StalePage("changed")]
+    for _ in range(3):
+        runner.state["decision"] = decision("e3")
+        try:
+            runner.command("act", {"fingerprint": current["fingerprint"]})
+        except StalePage:
+            pass
+    assert [entry["page_changed"] for entry in runner.state["history"]] == [False, False, None]
+    assert runner.state["status"] == "blocked"
+
+
+def test_tick_recovery_never_revives_a_stalled_run(runner):
+    """A failed recovery observation must not erase the stalled result:
+    tick returns blocked without re-enabling decisions."""
+    runner.state["history"] = [
+        {"page_changed": False, "kind": "click"},
+        {"page_changed": None, "kind": "click"},
+        {"page_changed": False, "kind": "click"},
+    ]
+    runner.state["browser"].fresh.side_effect = StalePage("Document navigating")
+    runner.state["browser"].observe.side_effect = StalePage("still navigating")
     runner.command("tick")
     assert runner.state["status"] == "blocked"
     runner.state["browser"].act.assert_not_called()
