@@ -215,7 +215,6 @@ def main():
         value = browser.evaluate("document.querySelector('#query').value")
         assert value == "Generated", repr(value)
         assert any(a.get("role") == "option" for a in page["actions"])
-        field_page = page
         passed.append("real text input waits for asynchronous combobox suggestions")
         assert browser.fresh(page, field)
         browser.call("Emulation.setDeviceMetricsOverride", width=360, height=400,
@@ -316,10 +315,12 @@ def main():
         assert "Wait for the page to update" in labels
         passed.append("250-action cap retains bounded scroll and wait controls")
 
+        assert browser.fresh(page)
         browser.call("Page.navigate", url="about:blank")
+        new_page = browser.observe(screenshot=False)
+        assert new_page["page_key"] != page["page_key"]
         assert not browser.fresh(page)
         assert not browser.fresh(page, action)
-        assert not browser.fresh(field_page, field)
         passed.append("navigation invalidates the old document")
     finally:
         browser.close()
