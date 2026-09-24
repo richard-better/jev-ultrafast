@@ -41,13 +41,14 @@ class Browser:
                 if self.evaluate("document.readyState") == "complete":
                     break
                 time.sleep(0.02)
-        except BaseException:
+        except BaseException as error:
             # Nothing that goes wrong while closing may replace the error the caller needs
-            # to see, including a second interrupt landing during the close itself.
+            # to see, including a second interrupt landing during the close itself. A tab
+            # that could not be closed is still worth knowing about, so it rides along.
             try:
                 self.close()
-            except BaseException:
-                pass
+            except BaseException as cleanup:
+                error.add_note(f"The browser tab this run opened may still be open: {cleanup!r}")
             raise
 
     def call(self, method, **params):

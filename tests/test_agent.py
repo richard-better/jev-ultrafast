@@ -748,8 +748,9 @@ def test_a_failed_close_does_not_replace_the_error_that_caused_it(monkeypatch):
     Browser, _ = start(
         monkeypatch, "Page.navigate", error=RuntimeError("bad URL"), on_close=RuntimeError("tab already gone")
     )
-    with pytest.raises(RuntimeError, match="bad URL"):
+    with pytest.raises(RuntimeError, match="bad URL") as caught:
         Browser("https://example.test/")
+    assert any("tab already gone" in note for note in caught.value.__notes__)
 
 
 def test_an_interrupt_while_closing_does_not_replace_the_original_error(monkeypatch):
