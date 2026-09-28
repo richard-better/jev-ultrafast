@@ -2,7 +2,8 @@ const $ = (id) => document.getElementById(id);
 const token = document.querySelector('meta[name="demo-token"]').content;
 let state = null,
   busy = false,
-  automatic = false;
+  automatic = false,
+  connected = false;
 const goals = {
   flights: '__FLIGHTS_GOAL__',
   travel: 'Find a Design stay in Lisbon with Free cancellation and open Casa Flora.',
@@ -18,21 +19,43 @@ const escape = (value) =>
       ],
   );
 const percent = (value) => `${(value * 100).toFixed(value < 0.01 ? 1 : 0)}%`;
+const isServerState = (value) =>
+  value !== null &&
+  typeof value === "object" &&
+  !Array.isArray(value) &&
+  typeof value.status === "string" &&
+  Array.isArray(value.history) &&
+  Object.hasOwn(value, "page") &&
+  Object.hasOwn(value, "decision");
+async function responseState(response) {
+  let data;
+  try {
+    data = await response.json();
+  } catch {
+    throw Error("Invalid response from local demo server");
+  }
+  if (!response.ok) throw Error(data?.error || `Request failed (${response.status})`);
+  if (!isServerState(data)) throw Error("Invalid response from local demo server");
+  return data;
+}
+async function readState() {
+  return responseState(await fetch("/api/state"));
+}
 async function call(name, body = {}) {
   const response = await fetch(`/api/${name}`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-Demo-Token": token },
     body: JSON.stringify(body),
   });
-  const data = await response.json();
-  if (!response.ok) throw Error(data.error || "Request failed");
+  const data = await responseState(response);
   state = data;
+  connected = true;
   render();
   return data;
 }
 function controls() {
-  const live = state?.page && !["done", "blocked"].includes(state.status);
-  $("start").disabled = busy;
+  const live = connected && state?.page && !["done", "blocked"].includes(state.status);
+  $("start").disabled = busy || !connected;
   $("scenario").disabled = busy;
   $("goal").disabled = busy;
   $("choose").disabled = busy || !live;
@@ -41,6 +64,8 @@ function controls() {
   $("auto").hidden = automatic;
   $("stop").hidden = !automatic;
   $("download").disabled = !(state?.history?.length || state?.decisions?.length);
+  $("retry").disabled = busy;
+  $("retry").hidden = connected;
 }
 async function perform(fn, label) {
   if (busy) return;
@@ -54,10 +79,12 @@ async function perform(fn, label) {
   } catch (error) {
     automatic = false;
     try {
-      state = await fetch("/api/state").then((r) => r.json());
+      state = await readState();
+      connected = true;
       render();
     } catch {
-      /* Preserve the original failure if the server disconnected. */
+      connected = false;
+      controls();
     }
     $("error").textContent = error.message;
     $("error").hidden = false;
@@ -66,6 +93,27 @@ async function perform(fn, label) {
     $("status").textContent = interrupted
       ? "Stopped · inspect the interrupted action"
       : "Paused · needs attention";
+  } finally {
+    busy = false;
+    controls();
+  }
+}
+async function retryConnection() {
+  if (busy) return;
+  busy = true;
+  $("error").hidden = true;
+  $("status").textContent = "Connecting to local demo server…";
+  controls();
+  try {
+    const fresh = await readState();
+    state = fresh;
+    connected = true;
+    render();
+  } catch (error) {
+    connected = false;
+    $("error").textContent = error.message;
+    $("error").hidden = false;
+    $("status").textContent = "Cannot reach local demo server";
   } finally {
     busy = false;
     controls();
@@ -206,6 +254,7 @@ $("stop").addEventListener("click", () => {
   $("status").textContent = "Pausing after the current request…";
   controls();
 });
+$("retry").addEventListener("click", retryConnection);
 $("overlays").addEventListener("change", () => {
   $("targets").hidden = !state?.page?.screenshot || !$("overlays").checked;
 });
@@ -249,12 +298,4 @@ $("download").addEventListener("click", () => {
   a.click();
   URL.revokeObjectURL(url);
 });
-fetch("/api/state")
-  .then((r) => r.json())
-  .then((s) => {
-    state = s;
-    render();
-  })
-  .catch(() => {
-    $("status").textContent = "Cannot reach local demo server";
-  });
+retryConnection();
