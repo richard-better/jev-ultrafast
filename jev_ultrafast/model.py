@@ -129,7 +129,9 @@ def choose(state, goal, history):
         "questions": questions,
     }
     started = time.perf_counter()
-    base = os.environ.get("TYPESAFE_BASE_URL", "https://api.typesafe.ai/v1").rstrip("/")
+    # Treat unset, empty and whitespace-only as "use the hosted endpoint": an empty value must not
+    # produce a relative URL like "/systemone", which httpx rejects as "Model connection failed".
+    base = (os.environ.get("TYPESAFE_BASE_URL", "").strip() or "https://api.typesafe.ai/v1").rstrip("/")
     result = post_json(base + "/systemone", os.environ["TYPESAFE_API_KEY"], body)
     # A reply can be valid JSON without being an envelope at all: a bare array, string or
     # null answers .get with an AttributeError, which is not what the caller is told to expect.
