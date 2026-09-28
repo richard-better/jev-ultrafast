@@ -76,7 +76,16 @@ class Handler(BaseHTTPRequestHandler):
     timeout = 5
 
     def log_message(self, format, *args):
-        sys.stderr.write("%s - %s\n" % (self.client_address[0], format % args))
+        # ascii() escapes control characters: a hostile request path cannot
+        # forge log lines or attack the terminal.
+        sys.stderr.write("%s - %s\n" % (self.client_address[0], ascii(format % args)))
+
+    def reply(self, status, content, mime="application/json"):
+        """send() that survives a client vanishing before the response."""
+        try:
+            self.send(status, content, mime)
+        except OSError:
+            self.log_message("response to %s lost: client disconnected", self.path)
 
     def send(self, status, content, mime="application/json"):
         content = content if isinstance(content, bytes) else content.encode()
@@ -134,10 +143,10 @@ class Handler(BaseHTTPRequestHandler):
             self.send(200, json.dumps(result))
         except (ValueError, RuntimeError, TimeoutError) as error:
             self.log_message("command %s failed: %s", self.path, error)
-            self.send(400, json.dumps({"error": str(error)}))
+            self.reply(400, json.dumps({"error": str(error)}))
         except Exception as error:
             self.log_message("command %s crashed: %r", self.path, error)
-            self.send(500, json.dumps({"error": "Local demo failed; no automatic retry. Reset to recover."}))
+            self.reply(500, json.dumps({"error": "Local demo failed; no automatic retry. Reset to recover."}))
         finally:
             LOCK.release()
 

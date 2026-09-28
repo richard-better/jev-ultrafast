@@ -3,6 +3,7 @@
 import json
 import socket
 import threading
+import time
 import urllib.error
 import urllib.request
 
@@ -14,11 +15,13 @@ import jev_ultrafast.demo as demo
 @pytest.fixture
 def server(capsys):
     """A real demo server on an ephemeral port with a patched Host check."""
+    saved = (demo.AGENT, demo.PORT, demo.ORIGIN)
     demo.AGENT = None
     with socket.socket() as probe:
         probe.bind(("127.0.0.1", 0))
         port = probe.getsockname()[1]
     demo.PORT = port
+    demo.ORIGIN = f"http://127.0.0.1:{port}"
     httpd = demo.ThreadingHTTPServer(("127.0.0.1", port), demo.Handler)
     httpd.daemon_threads = True
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
@@ -26,7 +29,7 @@ def server(capsys):
     yield f"http://127.0.0.1:{port}"
     httpd.shutdown()
     httpd.server_close()
-    demo.AGENT = None
+    demo.AGENT, demo.PORT, demo.ORIGIN = saved
 
 
 def call(base, name, body=None):
@@ -76,8 +79,9 @@ def test_aborted_post_does_not_poison_server(server):
         threading.Event().wait(0.5)
         # The stuck read must time out (Handler.timeout) and release the LOCK,
         # so the server recovers within seconds instead of staying poisoned.
+        deadline = time.monotonic() + demo.Handler.timeout + 3
         code = 409
-        for _ in range(16):
+        while time.monotonic() < deadline:
             code, _body = call(server, "predict", {})
             if code != 409:
                 break
