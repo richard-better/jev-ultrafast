@@ -161,6 +161,7 @@ def test_missing_text_credential_stops_before_guessing(monkeypatch):
 def runner():
     a = loop.Agent.__new__(loop.Agent)
     a.screenshots = False
+    a.max_steps = 60
     a.pending_text = None
     p = page()
     a.state = {
@@ -358,3 +359,95 @@ def test_navigation_during_prediction_reobserves_without_action(runner):
     assert runner.state["status"] == "ready"
     assert runner.state["decision"] is None
     runner.state["browser"].act.assert_not_called()
+
+
+@pytest.mark.parametrize("budget", [0, -1, True, 1.5, "2"])
+def test_invalid_budget_cannot_open_browser(monkeypatch, budget):
+    browser = Mock()
+    monkeypatch.setattr(loop, "Browser", browser)
+    with pytest.raises(ValueError, match="max_steps"):
+        loop.Agent("https://example.test", "Search", max_steps=budget)
+    browser.assert_not_called()
+
+
+def test_action_budget_prevents_mutation(runner):
+    runner.max_steps = 1
+    runner.state["history"] = [{"action": "previous"}]
+    with pytest.raises(ValueError, match="1-action budget"):
+        runner.command("act", {"fingerprint": runner.state["page"]["fingerprint"]})
+    runner.state["browser"].act.assert_not_called()
+
+
+def test_stale_decisions_have_bounded_model_calls(runner, monkeypatch):
+    runner.max_steps = 1
+    runner.state["decisions"] = [{}, {}]
+    choose = Mock()
+    monkeypatch.setattr(loop, "choose", choose)
+    with pytest.raises(ValueError, match="model-call budget"):
+        runner.command("predict")
+    choose.assert_not_called()
+
+
+def test_required_daemon_never_falls_back_to_another_browser(monkeypatch):
+    from jev_ultrafast import browser
+
+    monkeypatch.setenv("BH_REQUIRE_EXISTING_DAEMON", "1")
+    monkeypatch.setattr(browser, "daemon_browser_ready", Mock(return_value=False))
+    ensure = Mock()
+    cdp = Mock()
+    monkeypatch.setattr(browser, "ensure_daemon", ensure)
+    monkeypatch.setattr(browser, "cdp", cdp)
+    with pytest.raises(RuntimeError, match="required Browser Harness daemon"):
+        browser.Browser("https://example.test")
+    ensure.assert_not_called()
+    cdp.assert_not_called()
+
+
+def test_scroll_uses_current_small_viewport(monkeypatch):
+    from jev_ultrafast import browser
+
+    cdp = Mock(side_effect=[{"result": {"value": {"width": 360, "height": 400}}}, {}])
+    monkeypatch.setattr(browser, "cdp", cdp)
+    browser.browser_operation({"operation": "act", "session": "test",
+                               "action": {"id": "scroll_down", "kind": "scroll", "delta": 560}})
+    assert cdp.call_args.args == ("Input.dispatchMouseEvent",)
+    assert cdp.call_args.kwargs["x"] == 180 and cdp.call_args.kwargs["y"] == 200
+
+
+def test_observation_waits_for_navigation_without_repeating_input(monkeypatch):
+    from jev_ultrafast import browser
+
+    b = browser.Browser.__new__(browser.Browser)
+    b.session = "test"
+    operation = Mock(side_effect=[StalePage("navigating")] * 8 + [page()])
+    sleep = Mock()
+    monkeypatch.setattr(browser, "browser_operation", operation)
+    monkeypatch.setattr(browser.time, "sleep", sleep)
+    assert b.observe(screenshot=False)["url"] == "https://example.test/"
+    assert operation.call_count == 9
+    assert all(call.args[0]["operation"] == "observe" for call in operation.call_args_list)
+    assert sum(call.args[0] for call in sleep.call_args_list) >= 1.5
+
+
+def test_remote_response_deadline_does_not_retry_mutations(monkeypatch):
+    from jev_ultrafast import browser
+
+    b = browser.Browser.__new__(browser.Browser)
+    b.session = "test"
+    cdp = Mock(side_effect=TimeoutError("unknown navigation result"))
+    monkeypatch.setattr(browser, "cdp", cdp)
+    with pytest.raises(TimeoutError):
+        b.call("Page.navigate", url="https://example.test")
+    cdp.assert_called_once_with("Page.navigate", session_id="test", _response_timeout=30,
+                                url="https://example.test")
+
+
+def test_optional_screenshot_keeps_its_short_deadline(monkeypatch):
+    from jev_ultrafast import browser
+
+    b = browser.Browser.__new__(browser.Browser)
+    b.session = "test"
+    cdp = Mock(return_value={"data": "image"})
+    monkeypatch.setattr(browser, "cdp", cdp)
+    b.call("Page.captureScreenshot", format="jpeg")
+    cdp.assert_called_once_with("Page.captureScreenshot", session_id="test", _response_timeout=5, format="jpeg")

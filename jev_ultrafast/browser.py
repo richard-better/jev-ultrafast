@@ -2,16 +2,18 @@
 
 import hashlib
 import json
+import os
 import sys
 import time
 from pathlib import Path
 
-from browser_harness.admin import ensure_daemon
+from browser_harness.admin import daemon_browser_ready, ensure_daemon
 from browser_harness.helpers import cdp
 
 # Atomically read visible content and controls, preserving actual DOM node identity.
 READ_STATE = Path(__file__).with_name("snapshot.js").read_text()
 MARKER = f"(() => {{ const state={READ_STATE}; return state?.marker ?? null; }})()"
+CDP_RESPONSE_TIMEOUT = 30  # A deadline, not a delay: fast responses still return immediately.
 
 class StalePage(ValueError):
     """A decision no longer refers to the observed page."""
@@ -19,7 +21,11 @@ class StalePage(ValueError):
 
 class Browser:
     def __init__(self, url):
-        ensure_daemon()
+        if os.environ.get("BH_REQUIRE_EXISTING_DAEMON") == "1":
+            if not daemon_browser_ready():
+                raise RuntimeError("The required Browser Harness daemon is unavailable")
+        else:
+            ensure_daemon()
         self.target = cdp("Target.createTarget", url="about:blank", background=True)["targetId"]
         self.session = cdp("Target.attachToTarget", targetId=self.target, flatten=True)["sessionId"]
         self.call("Emulation.setDeviceMetricsOverride", width=1120, height=780, deviceScaleFactor=1, mobile=False)
@@ -33,7 +39,8 @@ class Browser:
             time.sleep(0.02)
 
     def call(self, method, **params):
-        return cdp(method, session_id=self.session, **params)
+        timeout = 5 if method == "Page.captureScreenshot" else CDP_RESPONSE_TIMEOUT
+        return cdp(method, session_id=self.session, _response_timeout=timeout, **params)
 
     def evaluate(self, expression):
         response = self.call("Runtime.evaluate", expression=expression, returnByValue=True)
@@ -82,7 +89,8 @@ class Browser:
             except StalePage:
                 if attempt == 9:
                     raise
-                time.sleep(0.02)
+                # Navigation can outlive the fast action loop. Retry observations only, never the mutation.
+                time.sleep(min(0.05 * (attempt + 1), 0.25))
         raise StalePage("Page did not settle")
 
     def fresh(self, page, action=None):
@@ -122,7 +130,8 @@ def browser_operation(request):
     session = request["session"]
 
     def call(method, **params):
-        return cdp(method, session_id=session, **params)
+        timeout = 5 if method == "Page.captureScreenshot" else CDP_RESPONSE_TIMEOUT
+        return cdp(method, session_id=session, _response_timeout=timeout, **params)
 
     def evaluate(expression):
         result = call("Runtime.evaluate", expression=expression, returnByValue=True)
@@ -136,7 +145,11 @@ def browser_operation(request):
         action = request["action"]
         kind = action["kind"]
         if kind == "scroll":
-            call("Input.dispatchMouseEvent", type="mouseWheel", x=550, y=650, deltaX=0, deltaY=action["delta"])
+            viewport = evaluate("({width:innerWidth,height:innerHeight})")
+            if not viewport or viewport["width"] <= 0 or viewport["height"] <= 0:
+                raise StalePage("No scrollable viewport")
+            call("Input.dispatchMouseEvent", type="mouseWheel", x=viewport["width"] / 2,
+                 y=viewport["height"] / 2, deltaX=0, deltaY=action["delta"])
         elif kind != "wait":
             if type(action["node"]) is not int:
                 raise ValueError("Invalid observed node")
