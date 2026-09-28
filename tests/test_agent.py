@@ -84,6 +84,41 @@ def test_nested_scroll_region_is_a_named_operation_control():
     assert controls["SCROLL_REGION_DOWN_1"]["node"] == 30
 
 
+@pytest.mark.parametrize("kind,operation,role", [("click", "CLICK", "button"), ("fill", "TYPE_TEXT", "textbox")])
+def test_element_labels_preserve_literal_arrows(kind, operation, role):
+    labels = ["Move → Inbox", "Move → Archive", "Cancel"]
+    actions = [
+        {"id": f"e{i}", "node": i, "kind": kind, "role": role, "label": label, "value": ""}
+        for i, label in enumerate(labels, 1)
+    ]
+    original = deepcopy(actions)
+    elements, targets, _ = model.action_space(actions)
+    assert [element["label"] for element in elements] == labels
+    assert targets[operation] == {str(i): action for i, action in enumerate(actions, 1)}
+    assert actions == original
+
+
+@pytest.mark.parametrize("explicit_label", [False, True])
+def test_select_element_name_is_separate_from_option_labels(explicit_label):
+    label = "Delivery → Method" if explicit_label else "Delivery"
+    actions = [
+        {"id": f"e{i}", "node": 1, "kind": "select", "role": "combobox", "value": value,
+         "current_value": "Current", "label": f"{label} → {option}",
+         **({"element_label": label} if explicit_label else {})}
+        for i, (value, option) in enumerate([("archive", "Inbox → Archive"), ("trash", "Inbox → Trash")], 1)
+    ]
+    original = deepcopy(actions)
+    elements, targets, _ = model.action_space(actions)
+    assert elements[0]["label"] == label
+    assert elements[0]["value"] == "Current"
+    assert elements[0]["options"] == [
+        {"index": f"1:{i}", "label": action["label"], "value": action["value"]}
+        for i, action in enumerate(actions, 1)
+    ]
+    assert targets["SELECT"] == {f"1:{i}": action for i, action in enumerate(actions, 1)}
+    assert actions == original
+
+
 def test_all_heads_are_one_request_and_only_matching_head_executes(monkeypatch):
     calls = []
 
