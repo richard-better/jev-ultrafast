@@ -129,7 +129,8 @@ def choose(state, goal, history):
         "questions": questions,
     }
     started = time.perf_counter()
-    result = post_json("https://api.typesafe.ai/v1/systemone", os.environ["TYPESAFE_API_KEY"], body)
+    base = os.environ.get("TYPESAFE_BASE_URL", "https://api.typesafe.ai/v1").rstrip("/")
+    result = post_json(base + "/systemone", os.environ["TYPESAFE_API_KEY"], body)
     # A reply can be valid JSON without being an envelope at all: a bare array, string or
     # null answers .get with an AttributeError, which is not what the caller is told to expect.
     if not isinstance(result, dict) or not isinstance(result.get("answers"), dict) or "model" not in result:
