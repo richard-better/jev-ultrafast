@@ -38,7 +38,7 @@ def check(kind):
                 or (kind == "fill" and method == "Input.insertText")
                 or (
                     kind == "select" and method == "Runtime.evaluate"
-                    and "e.value=action.value" in params["expression"]
+                    and "action.kind==='select'" in params["expression"]
                 )
             )
             if is_mutation and not dropped:
