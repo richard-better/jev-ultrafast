@@ -17,13 +17,19 @@ def stalled(history):
     Only an explicit ``page_changed=True`` counts as progress. An unobserved
     outcome (``page_changed=None`` after a failed post-action observation)
     must not reset the three-repeat no-progress check, or a stuck run keeps
-    spending model calls instead of stopping.
+    spending model calls instead of stopping. Three identical fills in a row
+    also count as stalled.
     See https://github.com/browser-use/jev-ultrafast/issues/94.
     """
     recent = history[-3:]
-    return len(recent) == 3 and all(
-        entry["page_changed"] is not True and entry["kind"] != "wait" for entry in recent
-    )
+    if len(recent) < 3:
+        return False
+    if all(entry["page_changed"] is not True and entry["kind"] != "wait" for entry in recent):
+        return True
+    # Retyping the same text into the same field re-renders suggestions, so the page changes,
+    # but it is never progress.
+    first = recent[0]
+    return all(e["kind"] == "fill" and (e["action"], e["text"]) == (first["action"], first["text"]) for e in recent)
 
 
 class Agent:
