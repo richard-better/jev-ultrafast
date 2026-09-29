@@ -1,8 +1,20 @@
 # Faster on the real web
 
-The current video completes the Google Flights task in **7.073 seconds at 1×**. It starts with one natural-language goal and uses dynamic controls throughout. Jev selects operation + target in one request; Mercury generates the city strings when TYPE_TEXT is selected.
+The current video completes the Google Flights task in **9.195 seconds at 1×**. It starts with one natural-language goal and uses dynamic controls throughout. Jev selects operation + target in one request; GLM 5.3 Flash generates the city strings when TYPE_TEXT is selected.
 
 [Video](demo.mp4) · [Recording measurements](flights-measurement.json) · [Matched run measurements](full-speed-measurement.json)
+
+## Current recording
+
+Three takes were recorded back to back with the same settings: a 1470×1470 viewport, TypeSafe `jev-1.13.0`, and GLM 5.3 Flash through OpenCode Go with reasoning effort `none`. All three passed independent verification, in **8.539, 9.195 and 11.148 s**. The video uses the median take; every take is listed in the measurement JSON.
+
+The recording contains **18 Jev requests**, **10 interactions plus one explicit WAIT**, and **two text calls**. Median Jev latency was **258 ms**, 4.982 s in total. GLM generated **Zurich in 1,462 ms** and **London in 797 ms**. Search executed at **7.406 s**; final verified completion was **9.195 s**. That final interval includes Google's results loading, state changes, and the completion decision. It stays in the video.
+
+Timing begins at the first prediction after initial homepage observation and ends at the accepted DONE choice. It includes text generation, model requests, browser work, stale decisions, and loading. Browser setup, initial navigation, and fresh independent post-run verification are outside the clock. The video contains 109 continuous screencast frames plus the initial screenshot, uses original timestamps, has no opening hold, and adds a 0.5-second final hold. Only the top account/navigation strip is cropped.
+
+The recording reports 104,157 TypeSafe input tokens and 6,474 output tokens across all requests. OpenCode Go is a subscription and reports no per-request charge for the two text calls.
+
+The previous video, a 7.073-second run at 1120×780 with Mercury through OpenRouter and a 178 ms median Jev latency, is described in the [earlier performance report](https://github.com/browser-use/jev-ultrafast/blob/1231850a0bf1a0c0341fe408ef1668dbbfdfac46/docs/performance.md). The matched comparison below predates the current recording and keeps its original settings.
 
 ## Matched runtime comparison
 
@@ -23,13 +35,7 @@ The original arm is the frozen source from `68c077bf79caca4e817b8e8a5854b2efa0c8
 
 The original loop invalidated decisions on every DOM mutation, including animations. It also read the accessibility tree repeatedly and resolved hundreds of DOM nodes. The new snapshot reads common HTML/ARIA controls in one browser call. Click guards compare the selected target and nearby context, plus document/form state. Current geometry and hit-testing still run before input.
 
-A brief event-based combobox wait lets suggestions arrive before asking Jev to choose from an incomplete popup. Text comes from an actual LLM: the recorded run generated **Zurich in 581 ms** and **London in 346 ms**. Native text replacement was also fixed to issue the browser's select-all command explicitly.
-
-The recording contains **17 Jev requests**, **10 interactions plus one explicit WAIT**, and **two helper calls**. Median Jev latency was **178 ms**. Search executed at **5.217 s**; final verified completion was **7.073 s**. That final interval includes Google's results loading, state changes, and the completion decision. It stays in the video.
-
-Timing begins at the first prediction after initial homepage observation and ends at the accepted DONE choice. It includes text generation, model requests, browser work, stale decisions, and loading. Browser setup, initial navigation, and fresh independent post-run verification are outside the clock. The video contains 186 continuous screencast frames plus the initial screenshot, uses original timestamps, has no opening hold, and adds a 0.5-second final hold. Only the top account/navigation strip is cropped.
-
-The recording reports 90,558 TypeSafe input tokens and 6,325 output tokens across all requests. OpenRouter reported **$0.00006272** for the two text calls. That is the text-helper charge, not total task cost: the TypeSafe responses contain token counts without a billed dollar amount, and browser costs are excluded.
+A brief event-based combobox wait lets suggestions arrive before asking Jev to choose from an incomplete popup. Text comes from an actual LLM. Native text replacement was also fixed to issue the browser's select-all command explicitly.
 
 ## Other checks
 
@@ -40,7 +46,7 @@ The recording reports 90,558 TypeSafe input tokens and 6,325 output tokens acros
 
 These are separate smoke checks, not matched speed comparisons. Local browser checks cover moved/replaced/hidden/disabled controls, field and checkbox properties, changed nearby context, overlay blocking, native-select execution, real text replacement, autocomplete arrival, and navigation. Offline tests cover the model contract, stale retries, interrupted mutations, helper validation, and independent trip verification.
 
-After the timed runs, native-select interruption handling was tightened: uncertain mutation results stop instead of being treated as retryable stale reads. Flights does not exercise native SELECT. Its timing and recording hashes are retained unchanged; the final failure path is covered by offline fault injection and local browser checks.
+After the timed runs, native-select interruption handling was tightened: uncertain mutation results stop instead of being treated as retryable stale reads. Flights does not exercise native SELECT. The comparison's timing and recording hashes are retained unchanged; the final failure path is covered by offline fault injection and local browser checks.
 
 ## Development attempts retained
 

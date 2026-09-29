@@ -1,8 +1,8 @@
 {
-  "elapsed_ms": 7073,
-  "decision_requests": 17,
-  "decision_median_ms": 178,
-  "decision_total_ms": 3720,
+  "elapsed_ms": 9195,
+  "decision_requests": 18,
+  "decision_median_ms": 258,
+  "decision_total_ms": 4982,
   "browser_actions": 11,
   "wait_actions": 1,
   "models": {
@@ -10,63 +10,53 @@
       "jev-1.13.0"
     ],
     "text": [
-      "inception/mercury-2.5"
+      "glm-5.3-flash"
     ]
+  },
+  "viewport": {
+    "width": 1470,
+    "height": 1470
   },
   "text_calls": [
     {
-      "model": "inception/mercury-2.5",
-      "latency_ms": 581,
+      "model": "glm-5.3-flash",
+      "latency_ms": 1462,
       "usage": {
-        "prompt_tokens": 440,
-        "completion_tokens": 78,
-        "total_tokens": 518,
-        "cost": 2.93e-05,
-        "is_byok": false,
+        "prompt_tokens": 498,
+        "completion_tokens": 9,
+        "total_tokens": 507,
         "prompt_tokens_details": {
-          "cached_tokens": 0,
-          "cache_write_tokens": 0,
           "audio_tokens": 0,
-          "video_tokens": 0
-        },
-        "cost_details": {
-          "upstream_inference_cost": 2.93e-05,
-          "upstream_inference_prompt_cost": 1.76e-05,
-          "upstream_inference_completions_cost": 1.17e-05
+          "cached_tokens": 0,
+          "cache_write_tokens": 0
         },
         "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
           "reasoning_tokens": 0,
-          "image_tokens": 0,
-          "audio_tokens": 0
+          "rejected_prediction_tokens": 0
         }
       },
       "field": "Where from?",
       "value": "Zurich"
     },
     {
-      "model": "inception/mercury-2.5",
-      "latency_ms": 346,
+      "model": "glm-5.3-flash",
+      "latency_ms": 797,
       "usage": {
-        "prompt_tokens": 483,
-        "completion_tokens": 94,
-        "total_tokens": 577,
-        "cost": 3.342e-05,
-        "is_byok": false,
+        "prompt_tokens": 555,
+        "completion_tokens": 8,
+        "total_tokens": 563,
         "prompt_tokens_details": {
-          "cached_tokens": 0,
-          "cache_write_tokens": 0,
           "audio_tokens": 0,
-          "video_tokens": 0
-        },
-        "cost_details": {
-          "upstream_inference_cost": 3.342e-05,
-          "upstream_inference_prompt_cost": 1.932e-05,
-          "upstream_inference_completions_cost": 1.41e-05
+          "cached_tokens": 0,
+          "cache_write_tokens": 0
         },
         "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
           "reasoning_tokens": 0,
-          "image_tokens": 0,
-          "audio_tokens": 0
+          "rejected_prediction_tokens": 0
         }
       },
       "field": "Where to? ",
@@ -85,88 +75,119 @@
       "results": true
     },
     "visible_flights": [
-      "From 216 US dollars.This price does not include overhead bin access. Nonstop flight with easyJet. Leaves Zurich Airport at 4:45 PM on Sunday, September 20 and arrives at London Gatwick Airport at 5:35 PM on Sunday, September 20. Total duration 1 hr 50 min.   Select flight",
-      "From 265 US dollars. Nonstop flight with British Airways. Operated by BA Cityflyer. Leaves Zurich Airport at 8:25 PM on Sunday, September 20 and arrives at London City Airport at 9:00 PM on Sunday, September 20. Total duration 1 hr 35 min.   Select flight",
-      "From 271 US dollars. Nonstop flight with British Airways. Leaves Zurich Airport at 1:20 PM on Sunday, September 20 and arrives at Heathrow Airport at 2:20 PM on Sunday, September 20. Total duration 2 hr.   Select flight"
+      "Flight details. Leaves Zurich Airport at 11:20 AM on Thursday, October 29 and arrives at London Gatwick Airport at 12:05 PM on Thursday, October 29.",
+      "Flight details. Leaves Zurich Airport at 6:15 AM on Thursday, October 29 and arrives at Heathrow Airport at 7:10 AM on Thursday, October 29.",
+      "Flight details. Leaves Zurich Airport at 6:25 PM on Thursday, October 29 and arrives at Heathrow Airport at 7:15 PM on Thursday, October 29.",
+      "Flight details. Leaves Zurich Airport at 10:20 AM on Thursday, October 29 and arrives at London Luton Airport at 11:10 AM on Thursday, October 29.",
+      "Flight details. Leaves Zurich Airport at 7:05 AM on Thursday, October 29 and arrives at Heathrow Airport at 8:05 AM on Thursday, October 29.",
+      "Flight details. Leaves Zurich Airport at 8:55 PM on Thursday, October 29 and arrives at Heathrow Airport at 9:40 PM on Thursday, October 29.",
+      "Flight details. Leaves Zurich Airport at 10:15 AM on Thursday, October 29 and arrives at Heathrow Airport at 11:10 AM on Thursday, October 29.",
+      "Flight details. Leaves Zurich Airport at 10:15 AM on Thursday, October 29 and arrives at Heathrow Airport at 11:15 AM on Thursday, October 29.",
+      "Flight details. Leaves Zurich Airport at 10:10 AM on Thursday, October 29 and arrives at London City Airport at 10:50 AM on Thursday, October 29.",
+      "Flight details. Leaves Zurich Airport at 8:15 PM on Thursday, October 29 and arrives at London Gatwick Airport at 9:00 PM on Thursday, October 29."
     ]
   },
   "source_hashes": {
-    "questions.py": "66a7054b85040b949e1757311257ea0c5a843c635f9a40c99f6d15ad660fb422",
+    "tracing.py": "782ba1ed17093c33b143c81a2bf0534414ea496c7aec898e7f36774b46bdb1e8",
+    "questions.py": "a00117aec74dbd280a05dae0293a7f73fe26d1fbb5d74209d81c9619bf03fbdc",
     "__init__.py": "60f025b8d24465e2c0f7a3547d43b8020fd8843de7b6cb3f892ef63f5548cf63",
-    "model.py": "a85ada8458d23642c5c8a4095acf0565e6268f81dcda26f6308942b653e9c9f3",
-    "browser.py": "6ef6c0cf9041f648c49bb09adf6b83d73ba301de5e87ffdeb03b0a4ce9e487ab",
-    "snapshot.js": "e50473501c8fb8e70f3b21866d987393e3f2315c639d638bd477d170e81ed78d",
-    "agent.py": "aaf8b271cb0ee6643fe7beb525328ab80de8568c7ac044d02b9c6721161e7c8b",
-    "demo.py": "a0cfb10909b370efb284cbbe16bdb4b7e7e06ba6385827404169027645a1d8a4"
+    "flight_date.py": "104feafc9d4e8e89e413e4d3a123cf0e608c448a799703553841917e58002e87",
+    "model.py": "900077b77e894935ab3226c56b074f2839f8d010c06c17fa3e756fef4157c510",
+    "browser.py": "c56a7161ddfe649b1d9ee8fbc160244607054e38ef383eb0c79a2115d3824003",
+    "snapshot.js": "f5b8198c0aa6f7d3b7ec95711f8eee81614329834b90c52b887d90db31afec30",
+    "agent.py": "396a92237036519665b9a3a3cb2a3d1a115f6619061fad41b40d5a524a4eb844",
+    "demo.py": "c08826035662c4a41a69fdef8f717b129693c0362d45d00198733ef4c2fd3ab2",
+    "trace_report.py": "f611ea370d04c89a9f523b440e1a5f9edd29b2eab3277120d03bbc3071f744a8"
   },
   "tokens": {
-    "input_tokens": 90558,
-    "output_tokens": 6325
+    "input_tokens": 104157,
+    "output_tokens": 6474
   },
-  "task": "Find one-way flights from Zurich to London on September 20, 2026, for one adult in economy. Stop when matching flight options are visible. Do not select or book a flight.",
+  "task": "Find one-way flights from Zurich to London on October 29, 2026, for one adult in economy. Stop when matching flight options are visible. Do not select or book a flight.",
   "timing": "First prediction after initial homepage observation through final DONE; setup and independent final verification excluded.",
   "video": {
-    "source_frames": 187,
+    "source_frames": 110,
     "speed": 1,
     "intro_hold_ms": 0,
     "end_hold_ms": 500,
     "crop": "Top 64 px account/navigation strip removed from every frame."
   },
+  "selection": "The median-time verified take of the session.",
+  "takes": [
+    {
+      "take": "take2",
+      "elapsed_ms": 9195,
+      "verified": true,
+      "chosen": true
+    },
+    {
+      "take": "take1",
+      "elapsed_ms": 8539,
+      "verified": true,
+      "chosen": false
+    },
+    {
+      "take": "take3",
+      "elapsed_ms": 11148,
+      "verified": true,
+      "chosen": false
+    }
+  ],
   "actions": [
     {
-      "operation": "CLICK",
-      "target": "12",
-      "action": "Change ticket type. Round trip",
-      "kind": "click",
-      "text": null,
-      "executed_ms": 336,
-      "elapsed_ms": 372,
-      "latency_ms": 299,
-      "text_latency_ms": 0
-    },
-    {
-      "operation": "CLICK",
-      "target": "14",
-      "action": "One way",
-      "kind": "click",
-      "text": null,
-      "executed_ms": 640,
-      "elapsed_ms": 725,
-      "latency_ms": 217,
-      "text_latency_ms": 0
-    },
-    {
       "operation": "TYPE_TEXT",
-      "target": "15",
+      "target": "13",
       "action": "Where from?",
       "kind": "fill",
       "text": "Zurich",
-      "executed_ms": 1595,
-      "elapsed_ms": 1770,
-      "latency_ms": 126,
-      "text_latency_ms": 581
+      "executed_ms": 1846,
+      "elapsed_ms": 1972,
+      "latency_ms": 335,
+      "text_latency_ms": 1462
     },
     {
       "operation": "CLICK",
       "target": "3",
-      "action": "Z\u00fcrich, Switzerland",
+      "action": "Zürich, Switzerland",
       "kind": "click",
       "text": null,
-      "executed_ms": 1930,
-      "elapsed_ms": 1959,
-      "latency_ms": 121,
+      "executed_ms": 2251,
+      "elapsed_ms": 2332,
+      "latency_ms": 250,
+      "text_latency_ms": 0
+    },
+    {
+      "operation": "CLICK",
+      "target": "10",
+      "action": "Change ticket type. Round trip",
+      "kind": "click",
+      "text": null,
+      "executed_ms": 2900,
+      "elapsed_ms": 2946,
+      "latency_ms": 258,
+      "text_latency_ms": 0
+    },
+    {
+      "operation": "CLICK",
+      "target": "12",
+      "action": "One way",
+      "kind": "click",
+      "text": null,
+      "executed_ms": 3259,
+      "elapsed_ms": 3295,
+      "latency_ms": 254,
       "text_latency_ms": 0
     },
     {
       "operation": "TYPE_TEXT",
-      "target": "16",
+      "target": "14",
       "action": "Where to? ",
       "kind": "fill",
       "text": "London",
-      "executed_ms": 2748,
-      "elapsed_ms": 2875,
-      "latency_ms": 120,
-      "text_latency_ms": 346
+      "executed_ms": 4698,
+      "elapsed_ms": 4813,
+      "latency_ms": 242,
+      "text_latency_ms": 797
     },
     {
       "operation": "CLICK",
@@ -174,53 +195,53 @@
       "action": "London, United Kingdom",
       "kind": "click",
       "text": null,
-      "executed_ms": 3053,
-      "elapsed_ms": 3085,
-      "latency_ms": 143,
+      "executed_ms": 5110,
+      "elapsed_ms": 5152,
+      "latency_ms": 274,
       "text_latency_ms": 0
     },
     {
       "operation": "CLICK",
-      "target": "18",
+      "target": "16",
       "action": "Open Departure",
       "kind": "click",
       "text": null,
-      "executed_ms": 3452,
-      "elapsed_ms": 3520,
-      "latency_ms": 112,
+      "executed_ms": 5787,
+      "elapsed_ms": 5871,
+      "latency_ms": 258,
       "text_latency_ms": 0
     },
     {
       "operation": "CLICK",
-      "target": "7",
-      "action": "Sunday, September 20, 2026",
+      "target": "33",
+      "action": "Thursday, October 29, 2026",
       "kind": "click",
       "text": null,
-      "executed_ms": 3769,
-      "elapsed_ms": 3810,
-      "latency_ms": 203,
+      "executed_ms": 6186,
+      "elapsed_ms": 6304,
+      "latency_ms": 259,
       "text_latency_ms": 0
     },
     {
       "operation": "CLICK",
-      "target": "56",
-      "action": "Done. Search for one-way flights, departing on September 20, 2026",
+      "target": "38",
+      "action": "Done. Search for one-way flights, departing on October 29, 2026",
       "kind": "click",
       "text": null,
-      "executed_ms": 4097,
-      "elapsed_ms": 4136,
-      "latency_ms": 247,
+      "executed_ms": 6628,
+      "elapsed_ms": 6696,
+      "latency_ms": 268,
       "text_latency_ms": 0
     },
     {
       "operation": "CLICK",
-      "target": "19",
+      "target": "17",
       "action": "Search",
       "kind": "click",
       "text": null,
-      "executed_ms": 5217,
-      "elapsed_ms": 5320,
-      "latency_ms": 178,
+      "executed_ms": 7406,
+      "elapsed_ms": 7514,
+      "latency_ms": 256,
       "text_latency_ms": 0
     },
     {
@@ -229,9 +250,9 @@
       "action": "Wait for the page to update",
       "kind": "wait",
       "text": null,
-      "executed_ms": 5587,
-      "elapsed_ms": 5594,
-      "latency_ms": 141,
+      "executed_ms": 7891,
+      "elapsed_ms": 7899,
+      "latency_ms": 257,
       "text_latency_ms": 0
     }
   ]
