@@ -101,7 +101,7 @@
     if (['checkbox','radio'].includes(e.type)) base.checked=e.type==='checkbox'&&e.indeterminate ? 'mixed' : String(e.checked);
     if (e.tagName==='SELECT') {
       for (const o of e.options) if (!o.selected && !o.disabled && !o.closest('optgroup[disabled]'))
-        actions.push({...base,kind:'select',value:o.value,option_node:identity(o),
+        actions.push({...base,kind:'select',value:o.value,option_node:identity(o),element_label:base.label,
           current_value:[...e.selectedOptions].map(o=>o.label).join(', '),label:base.label+' → '+o.label});
     } else {
       const editable=cache.editable(e);
