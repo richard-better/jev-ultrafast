@@ -29,12 +29,12 @@ except ImportError:
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 if args.task == "cheapest":
-    from examples.flights_cheapest import GOALS, URL, lowest_listed_price  # noqa: E402
+    from examples.flights_cheapest import GOALS, URL, cheapest_listed  # noqa: E402
     from examples.flights_cheapest import verify as verify_booking  # noqa: E402
 
     def verify(page, state):
-        # The lowest price is read in a separate tab after the run, outside the measured time.
-        return verify_booking(page, state["history"], lowest_listed_price())
+        # The cheapest listed flights are read in a separate tab after the run, outside the measured time.
+        return verify_booking(page, state["history"], cheapest_listed())
 else:
     from examples.flights import GOALS, URL  # noqa: E402
     from examples.flights import verify as verify_search  # noqa: E402
