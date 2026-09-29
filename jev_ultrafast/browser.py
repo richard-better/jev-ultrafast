@@ -465,6 +465,9 @@ def browser_operation(request):
                     raise StalePage("No scrollable viewport")
                 x, y = viewport["width"] / 2, viewport["height"] / 2
             call("Input.dispatchMouseEvent", type="mouseWheel", x=x, y=y, deltaX=0, deltaY=action["delta"])
+        elif kind == "shortcut":
+            # url_map built and checked this URL from validated parameters; the model never writes URLs.
+            call("Page.navigate", url=action["url"])
         elif kind != "wait":
             if type(action["node"]) is not int:
                 raise ValueError("Invalid observed node")

@@ -8,7 +8,7 @@ import time
 import httpx
 
 from . import tracing
-from .questions import NEXT_ACTION, TARGET, TEXT_VALUE
+from .questions import NEXT_ACTION, SHORTCUT_VALUES, TARGET, TEXT_VALUE
 
 USER_AGENT = "quietlabs.ai/jev-ultrafast-repl"
 CLIENT = httpx.Client(http2=True, timeout=25, headers={"User-Agent": USER_AGENT})
@@ -212,10 +212,11 @@ def field_context(goal, action, page, history):
     }
 
 
-def field_text(context, session):
+def text_json(system, context, session, purpose):
+    """One JSON-mode request to the text model. Returns the parsed reply and request metadata."""
     key = os.environ.get("TEXT_MODEL_API_KEY")
     if not key:
-        raise ValueError("TYPE_TEXT needs TEXT_MODEL_API_KEY; no text is hardcoded or guessed by the executor.")
+        raise ValueError(f"{purpose} needs TEXT_MODEL_API_KEY; no value is hardcoded or guessed by the executor.")
     base = os.environ.get("TEXT_MODEL_BASE_URL", "https://api.deepseek.com/v1").rstrip("/")
     model = os.environ.get("TEXT_MODEL", "deepseek-chat")
     reasoning = {"thinking": {"type": "disabled"}} if "api.deepseek.com/" in base else {"reasoning": {"effort": "low"}}
@@ -230,7 +231,7 @@ def field_text(context, session):
         "response_format": {"type": "json_object"},
         **reasoning,
         "messages": [
-            {"role": "system", "content": TEXT_VALUE},
+            {"role": "system", "content": system},
             {
                 "role": "user",
                 "content": json.dumps(context),
@@ -238,19 +239,33 @@ def field_text(context, session):
         ],
     }
     started = time.perf_counter()
-    with chat_span("text", httpx.URL(base).host, model) as span:
+    with chat_span(purpose.lower(), httpx.URL(base).host, model) as span:
         # OpenCode Go rejects requests without a session ID; it routes and caches by it.
         result = post_json(base + "/chat/completions", key, body, headers={"x-opencode-session": session})
         record_usage(span, result)
     try:
         output = json.loads(result["choices"][0]["message"]["content"])
-        value = output["text"]
-        if set(output) != {"text"} or not isinstance(value, str) or len(value) > 2000:
-            raise ValueError()
     except (ValueError, KeyError, TypeError, IndexError):
-        raise ValueError("Text helper returned no valid field value; nothing typed.") from None
-    return value, {
+        output = None
+    return output, {
         "model": model,
         "latency_ms": round((time.perf_counter() - started) * 1000),
         "usage": result.get("usage", {}),
     }
+
+
+def field_text(context, session):
+    output, meta = text_json(TEXT_VALUE, context, session, "TEXT")
+    value = output.get("text") if isinstance(output, dict) else None
+    if not isinstance(output, dict) or set(output) != {"text"} or not isinstance(value, str) or len(value) > 2000:
+        raise ValueError("Text helper returned no valid field value; nothing typed.")
+    return value, meta
+
+
+def shortcut_parameters(context, session):
+    """Parameter values for a URL map entry, still unvalidated: url_map.build checks every one."""
+    output, meta = text_json(SHORTCUT_VALUES, context, session, "SHORTCUT")
+    values = output.get("parameters") if isinstance(output, dict) else None
+    if not isinstance(output, dict) or set(output) != {"parameters"} or not isinstance(values, dict):
+        raise ValueError("Text helper returned no valid shortcut parameters; nothing opened.")
+    return values, meta

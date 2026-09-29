@@ -144,6 +144,14 @@ cannot replay the interrupted action. Pre-input stale-page rejections remain
 retryable, and failures while observing an already-confirmed action retain its
 execution record.
 
+## URL maps (experimental)
+
+Where a site's pages can be expressed as a URL, such as search results, a URL map lets the loop open them directly instead of filling the form. Load maps with `Agent(url, goal, url_map="examples/maps/google-flights.json")` or `JEV_URL_MAP` (several paths separated by `:`).
+
+Each map entry is offered as its own operation, like `OPEN_GOOGLE_FLIGHTS_ONE_WAY`, while the page is on the entry's site and path. The chooser only decides whether to take it. The text helper fills the entry's typed parameters (text, date, choice, integer) from the goal; code validates each one, encodes it into the entry's URL template, and refuses a URL off the entry's own site. The model never writes a URL. The navigation is logged before observation and never retried, like any other action. Entries only open pages; choosing, selecting and confirming stay on the page.
+
+`uv run python scripts/check_url_map.py` runs a Google Flights entry through the real browser path with a scripted choice and no model calls.
+
 ## Profile a run
 
 Set `JEV_TRACE_DIR` to record OpenTelemetry spans for every run: one OTLP JSON lines file per run, with model requests (`gen_ai.chat`), browser stages (`browser.stage`), waits and commands. Spans hold timings, operations and outcomes, never page text, typed values, prompts or credentials. `scripts/measure_flights.py` always writes a trace next to its state.

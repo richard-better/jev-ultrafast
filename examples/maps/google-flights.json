@@ -1,0 +1,33 @@
+{
+  "name": "Google Flights",
+  "notes": "Google Flights reads a free-text flight search from q=. Entries open search results only; choosing, selecting and booking stay on the page.",
+  "entries": [
+    {
+      "id": "google_flights_one_way",
+      "description": "Google Flights search results for a one-way trip by route, date, cabin and passengers",
+      "url": "https://www.google.com/travel/flights?hl=en&q=Flights%20from%20{origin}%20to%20{destination}%20on%20{date}%20one%20way%20{cabin}%20{adults}%20adults",
+      "match": {"path_prefix": "/travel/flights"},
+      "parameters": {
+        "origin": {"type": "text", "description": "Departure city or airport, as the goal names it"},
+        "destination": {"type": "text", "description": "Arrival city or airport, as the goal names it"},
+        "date": {"type": "date", "description": "Departure date"},
+        "cabin": {"type": "choice", "description": "Cabin class", "options": ["economy", "premium economy", "business", "first"]},
+        "adults": {"type": "integer", "description": "Number of adult passengers", "min": 1, "max": 9}
+      }
+    },
+    {
+      "id": "google_flights_round_trip",
+      "description": "Google Flights search results for a round trip by route, dates, cabin and passengers",
+      "url": "https://www.google.com/travel/flights?hl=en&q=Flights%20from%20{origin}%20to%20{destination}%20on%20{date}%20returning%20{return_date}%20{cabin}%20{adults}%20adults",
+      "match": {"path_prefix": "/travel/flights"},
+      "parameters": {
+        "origin": {"type": "text", "description": "Departure city or airport, as the goal names it"},
+        "destination": {"type": "text", "description": "Arrival city or airport, as the goal names it"},
+        "date": {"type": "date", "description": "Outbound departure date"},
+        "return_date": {"type": "date", "description": "Return departure date"},
+        "cabin": {"type": "choice", "description": "Cabin class", "options": ["economy", "premium economy", "business", "first"]},
+        "adults": {"type": "integer", "description": "Number of adult passengers", "min": 1, "max": 9}
+      }
+    }
+  ]
+}

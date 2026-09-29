@@ -63,7 +63,7 @@ def load(paths):
 def category(span):
     attributes = span["attributes"]
     if span["name"] == "gen_ai.chat":
-        return "text" if attributes.get("jev.purpose") == "text" else "choose"
+        return "text" if attributes.get("jev.purpose") in {"text", "shortcut"} else "choose"
     if span["name"] == "browser.stage":
         stage = attributes.get("stage")
         return "observe" if stage in OBSERVE else "act" if stage in ACT else "browser"
