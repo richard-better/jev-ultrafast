@@ -1,8 +1,10 @@
 """A measured live run with continuous CDP screencast; original timestamps retained."""
 
+import argparse
 import base64
 import hashlib
 import json
+import os
 import sys
 import threading
 import time
@@ -11,11 +13,28 @@ from pathlib import Path
 from browser_harness.helpers import drain_events
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from examples.flights import GOALS, URL, verify  # noqa: E402
 from jev_ultrafast import Agent  # noqa: E402
 from jev_ultrafast.browser import viewport  # noqa: E402
 
-folder = Path(sys.argv[1] if len(sys.argv) > 1 else "artifacts/flights/recorded")
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("folder", type=Path, nargs="?", default=Path("artifacts/flights/recorded"))
+parser.add_argument("--task", choices=["search", "cheapest"], default="search")
+args = parser.parse_args()
+if args.task == "cheapest":
+    from examples.flights_cheapest import GOALS, URL, cheapest_listed  # noqa: E402
+    from examples.flights_cheapest import verify as verify_booking  # noqa: E402
+
+    def verify(page, state):
+        # The cheapest listed flights are read in a separate tab after the recording, outside the measured time.
+        return verify_booking(page, state["history"], cheapest_listed())
+else:
+    from examples.flights import GOALS, URL  # noqa: E402
+    from examples.flights import verify as verify_search  # noqa: E402
+
+    def verify(page, state):
+        return verify_search(page)
+
+folder = args.folder
 folder.mkdir(parents=True, exist_ok=False)
 source_hashes = {
     p.name: hashlib.sha256(p.read_bytes()).hexdigest()
@@ -68,7 +87,9 @@ finally:
     agent.browser.call("Page.stopScreencast")
     state = agent.snapshot()
     state["final_page"] = agent.browser.observe(screenshot=False)
-    state["verification"] = verify(state["final_page"])
+    state["verification"] = verify(state["final_page"], state)
+    state["task"] = args.task
+    state["url_map"] = os.environ.get("JEV_URL_MAP") or None
     state["source_hashes"] = source_hashes
     state["recording_errors"] = errors
     (folder / "state.json").write_text(json.dumps(state, indent=2))

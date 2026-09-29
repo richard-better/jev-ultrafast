@@ -1,4 +1,4 @@
-"""Write docs/flights-measurement.json from a verified recording made by record_flights.py.
+"""Write a recording's measurement JSON (docs/flights-measurement.json by default) from record_flights.py takes.
 
     uv run python scripts/summarize_recording.py <chosen-take> [<other-take> ...]
 
@@ -22,6 +22,7 @@ def main():
     parser.add_argument("chosen", type=Path, help="recording folder the video is rendered from")
     parser.add_argument("others", type=Path, nargs="*", help="other takes recorded in the same session")
     parser.add_argument("--selection", default="The median-time verified take of the session.")
+    parser.add_argument("--output", type=Path, default=ROOT / "docs" / "flights-measurement.json")
     args = parser.parse_args()
     state = load(args.chosen)
     assert state["verification"]["passed"] and not state["recording_errors"]
@@ -47,6 +48,7 @@ def main():
             key: sum(d.get("usage", {}).get(key, 0) for d in decisions) for key in ("input_tokens", "output_tokens")
         },
         "task": state["goal"],
+        "url_map": state.get("url_map"),
         "timing": "First prediction after initial homepage observation through final DONE; setup and independent "
         "final verification excluded.",
         "video": {
@@ -68,7 +70,7 @@ def main():
             for h in state["history"]
         ],
     }
-    (ROOT / "docs" / "flights-measurement.json").write_text(json.dumps(summary, indent=2, ensure_ascii=False) + "\n")
+    args.output.write_text(json.dumps(summary, indent=2, ensure_ascii=False) + "\n")
     print(json.dumps({k: summary[k] for k in ("elapsed_ms", "decision_requests", "decision_median_ms", "models",
                                               "viewport", "takes")}, indent=2))
 
