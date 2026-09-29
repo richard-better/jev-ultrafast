@@ -1,0 +1,70 @@
+{
+  "task": "Find one-way flights from Zurich to London on October 29, 2026, for one adult in economy. Stop when matching flight options are visible. Do not select or book a flight.",
+  "url": "https://www.google.com/travel/flights?hl=en&q=Flights%20from%20Zurich%20to%20London%20on%202026-10-29%20one%20way%20economy%201%20adult",
+  "model_calls": 0,
+  "viewport": {
+    "width": 1470,
+    "height": 1470
+  },
+  "timing": "Page.navigate of the deep link through the first observation whose content checks all pass. Includes navigation and loading; the browser profile had visited Google Flights before.",
+  "content_checks": [
+    "one_way",
+    "origin",
+    "destination",
+    "date",
+    "year",
+    "results"
+  ],
+  "path_check": "The deep link keeps its /travel/flights?q= address, so the /travel/flights/search path check does not apply.",
+  "selection": "The median-time take of the session.",
+  "takes": [
+    {
+      "take": "take1",
+      "elapsed_ms": 722,
+      "verified": true,
+      "checks": {
+        "search_page": false,
+        "one_way": true,
+        "origin": true,
+        "destination": true,
+        "date": true,
+        "year": true,
+        "results": true
+      },
+      "visible_flights": 9,
+      "chosen": true
+    },
+    {
+      "take": "take2",
+      "elapsed_ms": 667,
+      "verified": true,
+      "checks": {
+        "search_page": false,
+        "one_way": true,
+        "origin": true,
+        "destination": true,
+        "date": true,
+        "year": true,
+        "results": true
+      },
+      "visible_flights": 7,
+      "chosen": false
+    },
+    {
+      "take": "take3",
+      "elapsed_ms": 840,
+      "verified": true,
+      "checks": {
+        "search_page": false,
+        "one_way": true,
+        "origin": true,
+        "destination": true,
+        "date": true,
+        "year": true,
+        "results": true
+      },
+      "visible_flights": 10,
+      "chosen": false
+    }
+  ]
+}
