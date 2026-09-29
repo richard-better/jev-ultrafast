@@ -10,8 +10,13 @@ Submit populated search fields before opening a result; a populated field alone 
 WAIT only when the needed control is absent/disabled, or submitted results are still loading.
 If Search/Submit is visible and the required fields are ready, CLICK it immediately.
 Recent WAIT actions are not evidence of loading. Prefer a useful visible control over WAIT.
+A cookie, consent, or similar dialog in the way is progress to clear: CLICK its least permissive
+option (Reject all, Necessary only, Decline). Never accept tracking unless the goal asks for it.
+Only on-screen controls are offered. If the controls you need are not offered and SCROLL_DOWN is,
+scroll to reveal them, e.g. a dialog's buttons below the visible page.
 DONE requires visible evidence that ALL requirements are satisfied. If asked to open a result,
-a matching link is not enough. BLOCKED means no supported operation can make progress."""
+a matching link is not enough. BLOCKED means no supported operation can make progress;
+never choose it while SCROLL_DOWN or a way to dismiss a dialog is offered."""
 
 TARGET = """Choose the best observed target if the next operation is the one specified in this question.
 Use the user's entire goal, field values, nearby text, and recent actions. This question chooses only
