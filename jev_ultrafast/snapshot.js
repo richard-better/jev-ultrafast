@@ -23,7 +23,8 @@
   };
   const roles=['button','link','checkbox','radio','switch','tab','menuitem','menuitemradio',
     'option','gridcell','combobox','textbox','searchbox','spinbutton'];
-  const selector='a,button,input,textarea,select,summary,[onclick],[tabindex],[contenteditable="true"],'+
+  const selector='a,button,input,textarea,select,summary,[onclick],[tabindex],'+
+    '[contenteditable=""],[contenteditable="true" i],[contenteditable="plaintext-only" i],'+
     roles.map(role=>'[role="'+role+'"]').join(',');
   const navigation = e => {
     if (e.tagName!=='A' || !['http:','https:'].includes(e.protocol) || e.hasAttribute('download')) return null;
