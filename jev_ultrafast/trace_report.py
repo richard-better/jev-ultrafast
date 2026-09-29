@@ -24,7 +24,7 @@ CATEGORIES = [
     ("other", "Uninstrumented"),
 ]
 LABELS = dict(CATEGORIES)
-OBSERVE = {"observe", "snapshot", "screenshot", "settle"}
+OBSERVE = {"observe", "snapshot", "screenshot", "settle", "frames"}
 ACT = {"act", "target", "input"}
 
 
