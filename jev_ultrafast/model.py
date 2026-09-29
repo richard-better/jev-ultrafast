@@ -30,7 +30,8 @@ def post_json(url, key, body, headers=None):
             time.sleep(0.5 * 2**attempt)
             continue
         if response.is_error:
-            raise RuntimeError(f"Model provider returned HTTP {response.status_code}; no action executed.")
+            detail = " ".join(response.text.split())[:300]
+            raise RuntimeError(f"Model provider returned HTTP {response.status_code}; no action executed. {detail}")
         try:
             return response.json()
         except ValueError:
