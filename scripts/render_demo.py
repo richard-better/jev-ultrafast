@@ -1,4 +1,8 @@
-"""Render the actual Google Flights screencast at 1x, including every loading wait."""
+"""Render the actual Google Flights screencast at 1x, including every loading wait.
+
+Agent recordings come from record_flights.py and replace docs/demo.*; deep-link recordings from
+record_flights_url.py render the same layout to docs/url-demo.* for comparison.
+"""
 
 import argparse
 import json
@@ -20,6 +24,8 @@ assert all(h.get("execution") != "unknown" for h in state["history"]), "Cannot r
 frames = [(0, Image.open(source / "frames/000000.jpg").convert("RGB"))]
 frames += sorted((int(p.stem), Image.open(p).convert("RGB")) for p in (source / "screencast").glob("*.jpg"))
 end = state["elapsed_ms"]
+url_mode = state.get("mode") == "url"
+outputs = ("url-demo", "url-demo-result.png") if url_mode else ("demo", "flights-result.png")
 # The panel keeps a fixed width and grows with the recorded viewport's height. The top 64 CSS
 # pixels hold Google account controls and are cropped out.
 view_width, view_height = state["page"]["w"], state["page"]["h"]
@@ -66,30 +72,38 @@ for i in range(round((end + 500) * 30 / 1000)):
     canvas = Image.new("RGB", (1536, canvas_height), "#f3f4ec")
     d = ImageDraw.Draw(canvas)
     d.text((36, 26), "browser use", font=font(23, True), fill=ink)
-    d.text((186, 27), "×  TypeSafe", font=font(22), fill=muted)
+    d.text((186, 27), "·  baseline" if url_mode else "×  TypeSafe", font=font(22), fill=muted)
     d.rounded_rectangle((1287, 24, 1499, 59), radius=17, fill="#dfebd9")
     d.text((1310, 32), "REAL WEB  ·  1× SPEED", font=font(14, True), fill=green)
     d.text((36, 80), f"Zürich → London. In {end / 1000:.1f} seconds.", font=font(43, True), fill=ink)
-    d.text((38, 139), "One goal. Dynamic elements. LLM-generated text.", font=font(20), fill=muted)
+    tagline = (
+        "Known route and date. One URL, no agent." if url_mode else "One goal. Dynamic elements. LLM-generated text."
+    )
+    d.text((38, 139), tagline, font=font(20), fill=muted)
     d.rounded_rectangle((35, 191, 1157, panel_bottom), radius=14, fill="#202124")
     for j, c in enumerate(["#de8278", "#d6bd6e", "#8dbd8a"]):
         d.ellipse((54 + j * 19, 205, 63 + j * 19, 214), fill=c)
-    d.text((145, 201), "google.com/travel/flights", font=mono(13), fill="#d4d6d5")
+    address = "google.com/travel/flights?q=Flights from Zurich to London…" if url_mode else "google.com/travel/flights"
+    d.text((145, 201), address, font=mono(13), fill="#d4d6d5")
     # Omit Google account controls in every frame. No content from the task area is redrawn.
     canvas.paste(browser_view(screenshot), (36, 226))
-    d.text((1192, 206), "JEV ULTRAFAST", font=font(16, True), fill=green)
+    d.text((1192, 206), "DIRECT URL" if url_mode else "JEV ULTRAFAST", font=font(16, True), fill=green)
     d.text((1189, 242), f"{t / 1000:05.2f}", font=mono(52), fill=ink)
     d.text((1193, 307), "SECONDS ELAPSED", font=font(13, True), fill=muted)
     history = [h for h in state["history"] if h["executed_ms"] <= t]
-    for j, (label, key) in enumerate(steps):
-        done = any(h["action"] == key or (key == "Done. Search" and h["action"].startswith(key)) for h in history)
+    final = t >= end
+    checklist = [("Open deep link", True), ("Flights verified", final)] if url_mode else [
+        (label, any(h["action"] == key or (key == "Done. Search" and h["action"].startswith(key)) for h in history))
+        for label, key in steps
+    ]
+    for j, (label, done) in enumerate(checklist):
         y = 370 + j * 54
         d.ellipse((1194, y, 1218, y + 24), fill=green if done else "#e0e4d9")
         if done:
             d.line([(1200, y + 12), (1204, y + 16), (1212, y + 8)], fill="white", width=2)
         d.text((1236, y - 1), label, font=font(21, done), fill=ink if done else muted)
-    waiting = t >= next(h["executed_ms"] for h in state["history"] if h["action"] == "Search") and t < end
-    final = t >= end
+    searched = 0 if url_mode else next(h["executed_ms"] for h in state["history"] if h["action"] == "Search")
+    waiting = t >= searched and t < end
     d.rounded_rectangle((1189, 670, 1499, 789), radius=14, fill="#dfeeda" if final else "#e7e9df")
     title = "Flights found" if final else "Waiting for Google…" if waiting else "Choose. Act. Repeat."
     d.text((1209, 691), title, font=font(22, True), fill=green if final else ink)
@@ -101,22 +115,28 @@ for i in range(round((end + 500) * 30 / 1000)):
         else f"{len(history)} actions executed"
     )
     d.text((1209, 734), subtitle, font=font(16), fill=muted)
-    latencies = [x["latency_ms"] for x in state["decisions"] if x["elapsed_ms"] <= t]
-    latency = f"{statistics.median(latencies):.0f} ms" if latencies else "—"
-    d.text((1194, 835), latency, font=mono(30), fill=ink)
-    d.text((1194, 878), "median decision latency", font=font(16), fill=muted)
+    if url_mode:
+        d.text((1194, 835), "0", font=mono(30), fill=ink)
+        d.text((1194, 878), "model calls", font=font(16), fill=muted)
+    else:
+        latencies = [x["latency_ms"] for x in state["decisions"] if x["elapsed_ms"] <= t]
+        latency = f"{statistics.median(latencies):.0f} ms" if latencies else "—"
+        d.text((1194, 835), latency, font=mono(30), fill=ink)
+        d.text((1194, 878), "median decision latency", font=font(16), fill=muted)
     d.line((37, canvas_height - 40, 1498, canvas_height - 40), fill="#d3d9cc", width=2)
     d.line((37, canvas_height - 40, 37 + (1498 - 37) * t / end, canvas_height - 40), fill=green, width=3)
     d.text(
         (37, canvas_height - 27),
-        f"Operation + index by Jev. Text by {state['text_calls'][0]['model'].split('/')[-1]}. "
+        "Opened by URL: no agent, no model calls. Original timing from navigation; loading included."
+        if url_mode
+        else f"Operation + index by Jev. Text by {state['text_calls'][0]['model'].split('/')[-1]}. "
         "Original timing; waits included.",
         font=font(14),
         fill=muted,
     )
     d.text((1194, canvas_height - 27), "github.com/browser-use/jev-ultrafast", font=font(12), fill=muted)
     canvas.save(folder / f"{i:04d}.png")
-canvas.save(ROOT / "docs/flights-result.png")
+canvas.save(ROOT / "docs" / outputs[1])
 subprocess.run(
     [
         "ffmpeg",
@@ -135,7 +155,7 @@ subprocess.run(
         "18",
         "-movflags",
         "+faststart",
-        str(ROOT / "docs/demo.mp4"),
+        str(ROOT / "docs" / f"{outputs[0]}.mp4"),
     ],
     check=True,
 )
@@ -146,12 +166,12 @@ subprocess.run(
         "-loglevel",
         "error",
         "-i",
-        str(ROOT / "docs/demo.mp4"),
+        str(ROOT / "docs" / f"{outputs[0]}.mp4"),
         "-vf",
         "fps=12,scale=1152:-1:flags=lanczos,split[a][b];[a]palettegen[p];[b][p]paletteuse",
         "-loop",
         "0",
-        str(ROOT / "docs/demo.gif"),
+        str(ROOT / "docs" / f"{outputs[0]}.gif"),
     ],
     check=True,
 )
