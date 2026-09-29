@@ -6,6 +6,7 @@ import uuid
 from copy import deepcopy
 from pathlib import Path
 
+from . import tracing
 from .browser import Browser, StalePage
 from .model import action_space, choose, field_context, field_text
 from .questions import MAX_STEPS
@@ -44,18 +45,26 @@ class Agent:
         self.pending_text = None
         # One session per run, so the text provider can route and cache it as one conversation.
         self.session = uuid.uuid4().hex
-        self.browser = Browser(url)
         self.record_dir = Path(record_dir) if record_dir else None
         self.screenshots = screenshots or bool(record_dir)
+        # The run's root span stays open until close(), across every command and yield.
+        self.trace = tracing.start_root("jev.run", **{"jev.max_steps": max_steps})
         try:
-            page = self.browser.observe(screenshot=self.screenshots)
+            with tracing.within(self.trace):
+                self.browser = Browser(url)
+                try:
+                    page = self.browser.observe(screenshot=self.screenshots)
+                except BaseException as error:
+                    # No caller holds this Agent yet, so this is the only place that can close the tab.
+                    # An interrupt counts, and a failed close must not replace the error that caused it.
+                    try:
+                        self.browser.close()
+                    except BaseException as cleanup:
+                        error.add_note(f"The browser tab this run opened may still be open: {cleanup!r}")
+                    raise
         except BaseException as error:
-            # No caller holds this Agent yet, so this is the only place that can close the tab.
-            # An interrupt counts, and a failed close must not replace the error that caused it.
-            try:
-                self.browser.close()
-            except BaseException as cleanup:
-                error.add_note(f"The browser tab this run opened may still be open: {cleanup!r}")
+            tracing.fail(self.trace, error)
+            self.trace.end()
             raise
         self.state = dict(
             browser=self.browser,
@@ -84,10 +93,15 @@ class Agent:
         }
 
     def command(self, name, body=None):
-        self._command(name, body)
+        with tracing.within(getattr(self, "trace", None)):
+            self._command(name, body)
         return self.snapshot()
 
     def _command(self, name, body=None):
+        with tracing.span("jev.command", **{"jev.command": name}):
+            self._execute(name, body)
+
+    def _execute(self, name, body=None):
         body = body or {}
         state = self.state
         if name == "tick":
@@ -122,6 +136,10 @@ class Agent:
                     "elapsed_ms": round((time.perf_counter() - state["started_at"]) * 1000),
                 }
             )
+            tracing.current().set_attributes({
+                "jev.operation": state["decision"]["operation"],
+                "jev.confidence": state["decision"]["confidence"],
+            })
             state["status"] = "predicted"
         elif name == "act":
             decision, page = state["decision"], state["page"]
@@ -194,6 +212,12 @@ class Agent:
                     "elapsed_ms": state["elapsed_ms"],
                 }
             )
+            tracing.current().set_attributes({
+                "jev.action": selected,
+                "jev.action.kind": kind,
+                "jev.operation": decision["operation"],
+                "jev.execution": state["history"][-1]["execution"],
+            })
             if execution_error is not None:
                 raise execution_error
             try:
@@ -218,6 +242,7 @@ class Agent:
                     base64.b64decode(screenshot)
                 )
             state["status"] = "blocked" if stalled(state["history"]) else "ready"
+            tracing.current().set_attribute("jev.page_changed", state["history"][-1]["page_changed"])
         else:
             raise ValueError("Unknown command")
 
@@ -226,7 +251,19 @@ class Agent:
             yield self.command("tick")
 
     def close(self):
-        self.browser.close()
+        trace = getattr(self, "trace", None)
+        try:
+            with tracing.within(trace):
+                self.browser.close()
+        finally:
+            if trace is not None:
+                state = getattr(self, "state", {})
+                trace.set_attributes({
+                    "jev.status": state.get("status", "unknown"),
+                    "jev.actions": len(state.get("history", [])),
+                    "jev.decisions": len(state.get("decisions", [])),
+                })
+                trace.end()
 
     def __enter__(self):
         return self

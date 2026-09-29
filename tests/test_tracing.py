@@ -87,3 +87,50 @@ def test_tracing_is_off_without_the_environment_variable(tmp_path, monkeypatch):
         assert not span.is_recording()
     assert not list(tmp_path.iterdir())
 
+
+def test_an_agent_run_exports_one_connected_span_tree(traced, monkeypatch):
+    from unittest.mock import Mock
+
+    from jev_ultrafast import agent as loop
+    from jev_ultrafast import model
+
+    before = {
+        "url": "https://example.test/", "title": "Search", "text": "Search", "scroll": {"y": 0},
+        "fingerprint": "before",
+        "actions": [{"id": "e1", "kind": "click", "label": "Go", "role": "button", "value": "", "node": 20}],
+    }
+    browser = Mock()
+    browser.observe.side_effect = [before, {**before, "fingerprint": "after"}]
+    browser.fresh.return_value = True
+    browser.act.return_value = {"executed": "e1"}
+    monkeypatch.setattr(loop, "Browser", Mock(return_value=browser))
+    monkeypatch.setenv("TYPESAFE_API_KEY", "test")
+    answer = {"choice": "CLICK", "confidence": 0.9, "probabilities": {"CLICK": 0.9, "DONE": 0.05, "BLOCKED": 0.05}}
+    target = {"choice": "1", "confidence": 1.0, "probabilities": {"1": 1.0}}
+    reply = {"model": "test", "answers": {"operation": answer, "click_target": target}, "usage": {"input_tokens": 7}}
+    monkeypatch.setattr(model, "post_json", Mock(return_value=reply))
+
+    agent = loop.Agent("https://example.test/", "Press Go")
+    agent.command("tick")
+    agent.close()
+
+    spans = spans_in(traced)
+    assert len({s["traceId"] for s in spans}) == 1
+    by_id = {s["spanId"]: s for s in spans}
+    (run,) = [s for s in spans if s["name"] == "jev.run"]
+    for span in spans:
+        if span is not run:
+            assert span["parentSpanId"] in by_id, span["name"]
+    commands = {attributes(s)["jev.command"]: s for s in spans if s["name"] == "jev.command"}
+    assert set(commands) == {"tick", "predict", "act"}
+    assert commands["predict"]["parentSpanId"] == commands["tick"]["spanId"]
+    assert commands["tick"]["parentSpanId"] == run["spanId"]
+    (chat,) = [s for s in spans if s["name"] == "gen_ai.chat"]
+    assert chat["parentSpanId"] == commands["predict"]["spanId"]
+    assert attributes(chat)["jev.purpose"] == "choose"
+    assert attributes(chat)["gen_ai.usage.input_tokens"] == "7"
+    act = attributes(commands["act"])
+    assert (act["jev.action"], act["jev.action.kind"], act["jev.execution"], act["jev.page_changed"]) == (
+        "e1", "click", "confirmed", True,
+    )
+    assert attributes(run)["jev.status"] == "ready" and attributes(run)["jev.actions"] == "1"

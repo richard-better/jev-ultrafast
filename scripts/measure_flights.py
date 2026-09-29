@@ -18,11 +18,18 @@ sys.path.insert(0, str(source))
 from jev_ultrafast import Agent  # noqa: E402
 from jev_ultrafast import browser as browser_module  # noqa: E402
 
+try:  # --source may point at a revision without tracing.
+    from jev_ultrafast import tracing  # noqa: E402
+except ImportError:
+    tracing = None
+
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 from examples.flights import GOALS, URL, verify  # noqa: E402
 
 folder = Path(args.output)
 folder.mkdir(parents=True, exist_ok=False)
+# Benchmarks always keep a trace next to their state.
+os.environ.setdefault("JEV_TRACE_DIR", str(folder / "trace"))
 source_hashes = {
     p.name: hashlib.sha256(p.read_bytes()).hexdigest()
     for p in (source / "jev_ultrafast").iterdir() if p.suffix in {".py", ".js"}
@@ -66,8 +73,13 @@ finally:
         # A missing fresh observation must not turn the cached page into a successful verification.
         state["final_page"] = None
         try:
-            state["final_page"] = agent.browser.observe(screenshot=True)
-            state["verification"] = verify(state["final_page"])
+            if tracing:
+                with tracing.within(agent.trace), tracing.span("jev.verify"):
+                    state["final_page"] = agent.browser.observe(screenshot=True)
+                    state["verification"] = verify(state["final_page"])
+            else:
+                state["final_page"] = agent.browser.observe(screenshot=True)
+                state["verification"] = verify(state["final_page"])
         except Exception as exc:
             state["verification"] = {"passed": False, "error": f"{type(exc).__name__}: {exc}"}
             finalization_error = exc
@@ -80,6 +92,10 @@ finally:
                 finalization_error = exc
         (folder / "state.json").write_text(json.dumps(state, indent=2))
     finally:
+        if tracing:
+            agent.trace.set_attribute("jev.verified", state.get("verification", {}).get("passed") is True)
+            if error:
+                agent.trace.set_attribute("jev.error", error.split(":", 1)[0])
         agent.close()
     if finalization_error is not None:
         raise finalization_error

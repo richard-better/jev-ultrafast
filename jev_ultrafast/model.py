@@ -7,6 +7,7 @@ import time
 
 import httpx
 
+from . import tracing
 from .questions import NEXT_ACTION, TARGET, TEXT_VALUE
 
 USER_AGENT = "quietlabs.ai/jev-ultrafast-repl"
@@ -23,11 +24,11 @@ def post_json(url, key, body, headers=None):
             response = CLIENT.post(url, json=body, headers={"Authorization": f"Bearer {key}", **(headers or {})})
         except httpx.HTTPError as error:
             if isinstance(error, TRANSIENT_ERRORS) and attempt < 2:
-                time.sleep(0.5 * 2**attempt)
+                tracing.wait("retry", 0.5 * 2**attempt)
                 continue
             raise RuntimeError("Model connection failed; no action executed.") from None
         if response.status_code in {429, 529, 503} and attempt < 2:
-            time.sleep(0.5 * 2**attempt)
+            tracing.wait("retry", 0.5 * 2**attempt)
             continue
         if response.is_error:
             detail = " ".join(response.text.split())[:300]
@@ -40,6 +41,32 @@ def post_json(url, key, body, headers=None):
             # message that says nothing about whether the browser was touched.
             raise RuntimeError("Model provider returned a non-JSON response; no action executed.") from None
     raise RuntimeError("Model unavailable")
+
+
+def chat_span(purpose, provider, model):
+    return tracing.span(
+        "gen_ai.chat",
+        **{
+            "gen_ai.operation.name": "chat",
+            "gen_ai.provider.name": provider,
+            "gen_ai.request.model": model,
+            "jev.purpose": purpose,
+        },
+    )
+
+
+def record_usage(span, result):
+    usage = result.get("usage") if isinstance(result, dict) else None
+    if not isinstance(usage, dict):
+        return
+    # TypeSafe and OpenAI-compatible providers name the same counts differently.
+    for key, names in {
+        "gen_ai.usage.input_tokens": ("input_tokens", "prompt_tokens"),
+        "gen_ai.usage.output_tokens": ("output_tokens", "completion_tokens"),
+    }.items():
+        value = next((usage[n] for n in names if isinstance(usage.get(n), int)), None)
+        if value is not None:
+            span.set_attribute(key, value)
 
 
 def validate_choice(answer, ids):
@@ -137,7 +164,9 @@ def choose(state, goal, history):
     # Treat unset, empty and whitespace-only as "use the hosted endpoint": an empty value must not
     # produce a relative URL like "/systemone", which httpx rejects as "Model connection failed".
     base = (os.environ.get("TYPESAFE_BASE_URL", "").strip() or "https://api.typesafe.ai/v1").rstrip("/")
-    result = post_json(base + "/systemone", os.environ["TYPESAFE_API_KEY"], body)
+    with chat_span("choose", "typesafe", body["model"]) as span:
+        result = post_json(base + "/systemone", os.environ["TYPESAFE_API_KEY"], body)
+        record_usage(span, result)
     # A reply can be valid JSON without being an envelope at all: a bare array, string or
     # null answers .get with an AttributeError, which is not what the caller is told to expect.
     if not isinstance(result, dict) or not isinstance(result.get("answers"), dict) or "model" not in result:
@@ -195,26 +224,24 @@ def field_text(context, session):
     if "opencode.ai/zen/" in base:
         # OpenCode rejects both fields above and accepts only OpenAI's top-level effort.
         reasoning = {"reasoning_effort": os.environ.get("TEXT_MODEL_REASONING") or "low"}
+    body = {
+        "model": model,
+        "max_tokens": 1024,
+        "response_format": {"type": "json_object"},
+        **reasoning,
+        "messages": [
+            {"role": "system", "content": TEXT_VALUE},
+            {
+                "role": "user",
+                "content": json.dumps(context),
+            },
+        ],
+    }
     started = time.perf_counter()
-    result = post_json(
-        base + "/chat/completions",
-        key,
-        {
-            "model": model,
-            "max_tokens": 1024,
-            "response_format": {"type": "json_object"},
-            **reasoning,
-            "messages": [
-                {"role": "system", "content": TEXT_VALUE},
-                {
-                    "role": "user",
-                    "content": json.dumps(context),
-                },
-            ],
-        },
+    with chat_span("text", httpx.URL(base).host, model) as span:
         # OpenCode Go rejects requests without a session ID; it routes and caches by it.
-        headers={"x-opencode-session": session},
-    )
+        result = post_json(base + "/chat/completions", key, body, headers={"x-opencode-session": session})
+        record_usage(span, result)
     try:
         output = json.loads(result["choices"][0]["message"]["content"])
         value = output["text"]
