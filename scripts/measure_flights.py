@@ -12,6 +12,10 @@ from pathlib import Path
 parser = argparse.ArgumentParser()
 parser.add_argument("--source", default=".")
 parser.add_argument("--output", required=True)
+parser.add_argument(
+    "--task", choices=["search", "cheapest"], default="search",
+    help="search: show results for the route and date; cheapest: select the cheapest flight's booking options",
+)
 args = parser.parse_args()
 source = Path(args.source).resolve()
 sys.path.insert(0, str(source))
@@ -24,7 +28,19 @@ except ImportError:
     tracing = None
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
-from examples.flights import GOALS, URL, verify  # noqa: E402
+if args.task == "cheapest":
+    from examples.flights_cheapest import GOALS, URL, lowest_listed_price  # noqa: E402
+    from examples.flights_cheapest import verify as verify_booking  # noqa: E402
+
+    def verify(page, state):
+        # The lowest price is read in a separate tab after the run, outside the measured time.
+        return verify_booking(page, state["history"], lowest_listed_price())
+else:
+    from examples.flights import GOALS, URL  # noqa: E402
+    from examples.flights import verify as verify_search  # noqa: E402
+
+    def verify(page, state):
+        return verify_search(page)
 
 folder = Path(args.output)
 folder.mkdir(parents=True, exist_ok=False)
@@ -65,6 +81,7 @@ finally:
         state["error"] = error
         state["cdp"] = measured_calls
         state["source_hashes"] = source_hashes
+        state["task"] = args.task
         state["task_hash"] = hashlib.sha256(json.dumps([URL, GOALS]).encode()).hexdigest()
         state["configuration"] = {
             key: os.environ.get(key)
@@ -76,10 +93,10 @@ finally:
             if tracing:
                 with tracing.within(agent.trace), tracing.span("jev.verify"):
                     state["final_page"] = agent.browser.observe(screenshot=True)
-                    state["verification"] = verify(state["final_page"])
+                    state["verification"] = verify(state["final_page"], state)
             else:
                 state["final_page"] = agent.browser.observe(screenshot=True)
-                state["verification"] = verify(state["final_page"])
+                state["verification"] = verify(state["final_page"], state)
         except Exception as exc:
             state["verification"] = {"passed": False, "error": f"{type(exc).__name__}: {exc}"}
             finalization_error = exc
