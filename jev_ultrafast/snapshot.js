@@ -25,6 +25,12 @@
     'option','gridcell','combobox','textbox','searchbox','spinbutton'];
   const selector='a,button,input,textarea,select,summary,[onclick],[tabindex],[contenteditable="true"],'+
     roles.map(role=>'[role="'+role+'"]').join(',');
+  const navigation = e => {
+    if (e.tagName!=='A' || !['http:','https:'].includes(e.protocol) || e.hasAttribute('download')) return null;
+    const target=e.target || document.querySelector('base[target]')?.target || '_self';
+    // Named contexts are case-sensitive; reserved keywords must retain their special meaning.
+    return {url:e.href,target:!target.startsWith('_') && target===window.name ? '_self' : target};
+  };
   const role = e => {
     const explicit=e.getAttribute('role');
     if (roles.includes(explicit)) return explicit;
@@ -59,7 +65,7 @@
     return [identity(e),role(e),name(e),e.value??null,e.checked??null,e.selectedIndex??null,
       e.readOnly??null,e.matches(':disabled'),e.getAttribute('aria-disabled'),
       e.getAttribute('aria-expanded'),e.getAttribute('aria-checked'),e.getAttribute('aria-selected'),
-      e.getAttribute('aria-pressed'),e.getAttribute('href'),scope?.innerText?.slice(0,6000)||'',
+      e.getAttribute('aria-pressed'),e.getAttribute('href'),navigation(e),scope?.innerText?.slice(0,6000)||'',
       e.tagName==='SELECT' ? [e.multiple,[...e.options].map(o=>
         [identity(o),o.value,o.label,o.selected,o.disabled,!!o.closest('optgroup[disabled]')])] : null];
   };
@@ -84,6 +90,8 @@
     if (rname==='gridcell' && e.querySelector('button,[role="button"]')) continue;
     const base={node:identity(e),role:rname,label:name(e)||rname,
       rect:{x:r.x,y:r.y,w:r.width,h:r.height}};
+    const destination=navigation(e);
+    if (destination) base.navigation=destination;
     if (covered) base.covered=true;
     for (const key of ['checked','selected','expanded','pressed']) {
       const value=e.getAttribute('aria-'+key);
