@@ -2,6 +2,7 @@
 
 import base64
 import time
+import uuid
 from copy import deepcopy
 from pathlib import Path
 
@@ -35,6 +36,8 @@ class Agent:
         self.max_steps = max_steps
         plan = [task]
         self.pending_text = None
+        # One session per run, so the text provider can route and cache it as one conversation.
+        self.session = uuid.uuid4().hex
         self.browser = Browser(url)
         self.record_dir = Path(record_dir) if record_dir else None
         self.screenshots = screenshots or bool(record_dir)
@@ -141,7 +144,7 @@ class Agent:
                 if self.pending_text and self.pending_text[0] == context:
                     _, text, helper = self.pending_text
                 else:
-                    text, helper = field_text(context)
+                    text, helper = field_text(context, self.session)
                     self.pending_text = (context, text, helper)
                     state["text_calls"].append({**helper, "field": action["label"], "value": text})
             # Browser.act checks freshness immediately before input, including after text generation.

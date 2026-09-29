@@ -214,16 +214,49 @@ def test_quoted_task_text_still_uses_the_llm(monkeypatch):
     post = Mock(return_value={"choices": [{"message": {"content": '{"text":"Zurich"}'}}]})
     monkeypatch.setattr(model, "post_json", post)
     context = model.field_context('Fly from "Zurich" to London', page()["actions"][0], page(), [])
-    assert model.field_text(context)[0] == "Zurich"
+    assert model.field_text(context, "session")[0] == "Zurich"
     assert post.call_count == 1
     sent = json.loads(post.call_args.args[2]["messages"][1]["content"])
     assert sent["goal"] == 'Fly from "Zurich" to London'
 
 
+def test_text_helper_identifies_the_client_and_session(monkeypatch):
+    monkeypatch.setenv("TEXT_MODEL_API_KEY", "test")
+    post = Mock(return_value={"choices": [{"message": {"content": '{"text":"Zurich"}'}}]})
+    monkeypatch.setattr(model, "post_json", post)
+    model.field_text({"goal": "Fly from Zurich"}, "run-1")
+    assert post.call_args.kwargs["headers"] == {"x-opencode-session": "run-1"}
+    assert model.CLIENT.headers["User-Agent"] == "quietlabs.ai/jev-ultrafast-repl"
+
+
+@pytest.mark.parametrize("setting,effort", [(None, "low"), ("none", "none")])
+def test_opencode_receives_only_top_level_reasoning_effort(monkeypatch, setting, effort):
+    monkeypatch.setenv("TEXT_MODEL_API_KEY", "test")
+    monkeypatch.setenv("TEXT_MODEL_BASE_URL", "https://opencode.ai/zen/go/v1")
+    if setting:
+        monkeypatch.setenv("TEXT_MODEL_REASONING", setting)
+    else:
+        monkeypatch.delenv("TEXT_MODEL_REASONING", raising=False)
+    post = Mock(return_value={"choices": [{"message": {"content": '{"text":"Zurich"}'}}]})
+    monkeypatch.setattr(model, "post_json", post)
+    model.field_text({"goal": "Fly from Zurich"}, "run-1")
+    body = post.call_args.args[2]
+    assert body["reasoning_effort"] == effort
+    assert "reasoning" not in body and "thinking" not in body
+
+
+def test_text_calls_use_the_run_session(runner, monkeypatch):
+    helper = Mock(return_value=("book", {"model": "test", "latency_ms": 10}))
+    monkeypatch.setattr(loop, "field_text", helper)
+    runner.state["decision"] = decision("e1")
+    runner.command("act", {"fingerprint": runner.state["page"]["fingerprint"]})
+    assert helper.call_args.args[1] == runner.session
+
+
 def test_missing_text_credential_stops_before_guessing(monkeypatch):
     monkeypatch.delenv("TEXT_MODEL_API_KEY", raising=False)
     with pytest.raises(ValueError, match="TEXT_MODEL_API_KEY"):
-        model.field_text({"goal": 'Enter "Zurich"'})
+        model.field_text({"goal": 'Enter "Zurich"'}, "session")
 
 
 @pytest.fixture
@@ -232,6 +265,7 @@ def runner():
     a.screenshots = False
     a.max_steps = 60
     a.pending_text = None
+    a.session = "session"
     p = page()
     a.state = {
         "browser": Mock(fresh=Mock(return_value=True), observe=Mock(return_value=p)),
@@ -909,7 +943,7 @@ def test_an_empty_choices_array_reports_that_nothing_was_typed(monkeypatch):
     provider(monkeypatch, response={"choices": []})
     monkeypatch.setenv("TEXT_MODEL_API_KEY", "test-key")
     with pytest.raises(ValueError, match="nothing typed"):
-        model.field_text({"goal": "Find a book", "field": {}})
+        model.field_text({"goal": "Find a book", "field": {}}, "session")
 
 
 def test_a_reply_missing_the_model_name_is_rejected(monkeypatch):
