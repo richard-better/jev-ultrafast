@@ -330,11 +330,25 @@ def test_interrupted_fill_discards_generated_text(runner, monkeypatch):
     assert runner.state["status"] == "blocked"
 
 
+def test_fill_whose_click_moved_focus_is_logged_as_a_click_and_the_run_continues(runner, monkeypatch):
+    monkeypatch.setattr(loop, "field_text", Mock(return_value=("book", {"model": "test", "latency_ms": 10})))
+    moved = {**page(), "fingerprint": "popup"}
+    runner.state["browser"].observe.return_value = moved
+    runner.state["browser"].act.return_value = {"executed": "e1", "typed": False}
+    runner.command("act", {"fingerprint": runner.state["page"]["fingerprint"]})
+    entry = runner.state["history"][-1]
+    assert (entry["kind"], entry["text"], entry["execution"]) == ("click", None, "confirmed")
+    assert entry["page_changed"] is True
+    assert runner.pending_text is None
+    assert runner.state["status"] == "ready"
+    runner.state["browser"].act.assert_called_once()
+
+
 @pytest.mark.parametrize("text", ["book", ""])
 def test_generated_text_reused_only_for_identical_retry_context(runner, monkeypatch, text):
     helper = Mock(return_value=(text, {"model": "test", "latency_ms": 10}))
     monkeypatch.setattr(loop, "field_text", helper)
-    runner.state["browser"].act.side_effect = [StalePage("Changed before input"), None]
+    runner.state["browser"].act.side_effect = [StalePage("Changed before input"), {"executed": "e1"}]
     with pytest.raises(StalePage):
         runner.command("act", {"fingerprint": runner.state["page"]["fingerprint"]})
     runner.state["decision"] = decision()
@@ -367,7 +381,7 @@ def test_generated_text_reaches_execution_and_history_unchanged(runner, monkeypa
 def test_changed_field_context_does_not_reuse_generated_text(runner, monkeypatch):
     helper = Mock(return_value=("book", {"model": "test", "latency_ms": 10}))
     monkeypatch.setattr(loop, "field_text", helper)
-    runner.state["browser"].act.side_effect = [StalePage("Changed before input"), None]
+    runner.state["browser"].act.side_effect = [StalePage("Changed before input"), {"executed": "e1"}]
     with pytest.raises(StalePage):
         runner.command("act", {"fingerprint": runner.state["page"]["fingerprint"]})
     runner.state["page"]["text"] = "Different page context"
