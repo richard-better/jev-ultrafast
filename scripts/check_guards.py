@@ -1,9 +1,7 @@
 """Local-browser freshness/execution regressions. No live model calls or external websites."""
 
-import time
-
-
 import json
+import time
 from unittest.mock import patch
 from urllib.parse import quote
 
@@ -136,11 +134,11 @@ def main():
                          "document.querySelector('#target').style.display='block'")
         page = browser.observe(screenshot=False)
         action = next(a for a in page["actions"] if a["label"] == "Delete account")
-        # A textless overlay removes covered targets from the action table and must block a click.
+        # A textless overlay leaves the marker alone (see check_hittest.py); the executor's
+        # hit test immediately before input must still block the click.
         browser.evaluate("const cover=document.createElement('div'); "
                          "cover.style.cssText='position:fixed;inset:0;z-index:9999;background:white'; "
                          "document.body.append(cover)")
-        assert not browser.fresh(page)
         try:
             browser.act(action, page)
         except (RuntimeError, StalePage):
@@ -251,7 +249,10 @@ def main():
         assert browser.evaluate("scrollY") > 0, browser.evaluate(
             "({width:innerWidth,height:innerHeight,scrollHeight:document.documentElement.scrollHeight})")
         passed.append("scrolling works below the former fixed 650-pixel input coordinate")
-
+        # Only on-screen controls are offered. Restore the agent's real viewport for later fixtures.
+        browser.call("Emulation.setDeviceMetricsOverride", width=1120, height=780,
+                     deviceScaleFactor=1, mobile=False)
+        browser.evaluate("document.body.style.height='';window.scrollTo(0,0)")
 
         browser.evaluate("document.body.innerHTML=" + repr("""
           <form id="publication">
@@ -302,8 +303,10 @@ def main():
         browser.evaluate("""document.body.innerHTML=
           '<section id="dense-feed" aria-label="Dense results" style="position:fixed;left:500px;top:140px;'
           +'width:320px;height:180px;overflow-y:auto"><div style="height:800px">Results</div></section>'
-          +Array.from({length:260},(_,i)=>'<button style="position:fixed;left:0;top:0">Button '
-          +i+'</button>').join('')""")
+          // Every button must be hittable, or the executor-reachability filter drops it before the cap.
+          +'<div style="position:fixed;left:0;top:0;width:480px;display:flex;flex-wrap:wrap">'
+          +Array.from({length:260},(_,i)=>'<button style="width:24px;height:24px;padding:0;overflow:hidden;'
+          +'font-size:4px">Button '+i+'</button>').join('')+'</div>'""")
         page = browser.observe(screenshot=False)
         labels = {a["label"] for a in page["actions"]}
         retained_buttons = sum(a["kind"] == "click" for a in page["actions"])
@@ -512,7 +515,7 @@ def main():
         ("Show stays in London.", "London"),
         ("Show stays in my preferred destination.", None),
     ]:
-        def provider(_url, _key, body):
+        def provider(_url, _key, body, headers=None):
             if "questions" in body:
                 questions = body["questions"]
                 selected = {

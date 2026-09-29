@@ -9,7 +9,13 @@ function inspector() {
   const document = {
     querySelector: () => ({ content: 'offline-token' }),
     getElementById: id => {
-      if (!nodes.has(id)) nodes.set(id, { addEventListener() {} });
+      if (!nodes.has(id)) {
+        const children = new Map();
+        nodes.set(id, {
+          addEventListener() {},
+          querySelector: selector => children.get(selector) ?? children.set(selector, {}).get(selector),
+        });
+      }
       return nodes.get(id);
     },
   };
@@ -36,6 +42,7 @@ test('an interrupted action remains stopped after the inspector refreshes its st
   assert.match(nodes.get('status').textContent, /Stopped.*interrupted/);
   assert.match(nodes.get('history').innerHTML, /Execution unconfirmed/);
   assert.doesNotMatch(nodes.get('history').innerHTML, /No change observed/);
+  assert.equal(nodes.get('empty').querySelector('h2').textContent, 'Live preview unavailable.');
 });
 
 test('a failed reset reports its own error without attributing the old interruption to it', async () => {
