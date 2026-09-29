@@ -2,6 +2,8 @@
 
 from unittest.mock import Mock
 
+import pytest
+
 from jev_ultrafast import browser
 
 
@@ -53,3 +55,20 @@ def test_context_that_stays_destroyed_is_polled_until_the_deadline(monkeypatch):
     assert owned.session == "owned-session"
     assert calls.count("Runtime.evaluate") == 14
     assert calls.count("Page.navigate") == 1
+
+
+@pytest.mark.parametrize(("raw", "expected"), [(None, (1120, 780)), ("", (1120, 780)), ("1470x830", (1470, 830)),
+                                               (" 1470X1660 ", (1470, 1660))])
+def test_viewport_comes_from_the_environment(monkeypatch, raw, expected):
+    if raw is None:
+        monkeypatch.delenv("JEV_VIEWPORT", raising=False)
+    else:
+        monkeypatch.setenv("JEV_VIEWPORT", raw)
+    assert browser.viewport() == expected
+
+
+@pytest.mark.parametrize("raw", ["1470", "wide", "1470x830x2", "100x830", "1470x9000"])
+def test_invalid_viewports_are_rejected(monkeypatch, raw):
+    monkeypatch.setenv("JEV_VIEWPORT", raw)
+    with pytest.raises(ValueError, match="JEV_VIEWPORT"):
+        browser.viewport()

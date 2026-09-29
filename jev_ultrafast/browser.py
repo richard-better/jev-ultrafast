@@ -18,6 +18,22 @@ READ_STATE = Path(__file__).with_name("snapshot.js").read_text(encoding="utf-8")
 MARKER = f"(() => {{ const state={READ_STATE}; return state?.marker ?? null; }})()"
 CDP_RESPONSE_TIMEOUT = 30  # A deadline, not a delay: fast responses still return immediately.
 FRAME_LIMIT = 4
+DEFAULT_VIEWPORT = (1120, 780)
+
+
+def viewport():
+    """The emulated page size: JEV_VIEWPORT as WIDTHxHEIGHT, e.g. 1470x830."""
+    raw = os.environ.get("JEV_VIEWPORT", "").strip().lower()
+    if not raw:
+        return DEFAULT_VIEWPORT
+    try:
+        width, height = (int(part) for part in raw.split("x"))
+    except ValueError:
+        raise ValueError(f"JEV_VIEWPORT must be WIDTHxHEIGHT, not {raw!r}") from None
+    if not (320 <= width <= 4096 and 320 <= height <= 4096):
+        raise ValueError(f"JEV_VIEWPORT {raw!r} is outside 320-4096 pixels per side")
+    return width, height
+
 # Map a point inside a frame to this viewport, only if the frame element itself is hit there.
 PLACE = """(([node,x,y]) => {
   const f=window.__jevFast?.nodes.get(node);
@@ -53,13 +69,16 @@ class Browser:
         else:
             ensure_daemon()
         self.frames = {}
+        width, height = viewport()
         self.target = cdp("Target.createTarget", url="about:blank", background=True)["targetId"]
         # The tab exists from here on, and no caller holds this object yet. Whatever fails
         # below -- a refused attach, a malformed URL, Ctrl-C during the readiness wait --
         # this is the only place that can still close it instead of orphaning it in Chrome.
         try:
             self.session = cdp("Target.attachToTarget", targetId=self.target, flatten=True)["sessionId"]
-            self.call("Emulation.setDeviceMetricsOverride", width=1120, height=780, deviceScaleFactor=1, mobile=False)
+            self.call(
+                "Emulation.setDeviceMetricsOverride", width=width, height=height, deviceScaleFactor=1, mobile=False
+            )
             # Keep rAF/menus rendering in an owned background tab, without activating the user's Chrome tab.
             self.call("Emulation.setFocusEmulationEnabled", enabled=True)
             self.call("Page.navigate", url=url)
