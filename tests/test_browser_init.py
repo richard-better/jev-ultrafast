@@ -57,7 +57,7 @@ def test_context_that_stays_destroyed_is_polled_until_the_deadline(monkeypatch):
     assert calls.count("Page.navigate") == 1
 
 
-@pytest.mark.parametrize(("raw", "expected"), [(None, (1120, 780)), ("", (1120, 780)), ("1470x830", (1470, 830)),
+@pytest.mark.parametrize(("raw", "expected"), [(None, (1470, 1470)), ("", (1470, 1470)), ("1470x830", (1470, 830)),
                                                (" 1470X1660 ", (1470, 1660))])
 def test_viewport_comes_from_the_environment(monkeypatch, raw, expected):
     if raw is None:

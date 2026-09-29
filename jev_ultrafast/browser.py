@@ -18,7 +18,7 @@ READ_STATE = Path(__file__).with_name("snapshot.js").read_text(encoding="utf-8")
 MARKER = f"(() => {{ const state={READ_STATE}; return state?.marker ?? null; }})()"
 CDP_RESPONSE_TIMEOUT = 30  # A deadline, not a delay: fast responses still return immediately.
 FRAME_LIMIT = 4
-DEFAULT_VIEWPORT = (1120, 780)
+DEFAULT_VIEWPORT = (1470, 1470)
 
 
 def viewport():

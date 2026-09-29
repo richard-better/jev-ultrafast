@@ -64,8 +64,10 @@ root.querySelectorAll('button').forEach(b=>b.onclick=()=>decide(b.textContent.st
 
 def pages(frame_origin):
     below_fold = (
-        '<main style="padding:40px"><h1>Before you continue</h1>'
+        # Taller than any viewport, so the buttons start below the fold at every JEV_VIEWPORT.
+        '<main style="padding:40px"><h1>Before you continue</h1><div style="min-height:110vh">'
         + "".join(f"<p>Section {i}: how we use cookies and data.</p>" for i in range(1, 25))
+        + "</div>"
         + BUTTONS.replace("decide(", "decideAndShow(")
         + "</main><script>function decideAndShow(v){window.consent=v;document.body.innerHTML="
         + json.dumps(SHOP)

@@ -65,6 +65,8 @@ Open **http://127.0.0.1:8766** and click **Start demo → Run automatically**. T
 
 Set `TYPESAFE_DEMO_PORT` in `.env` to run the inspector on a different local port.
 
+The browser emulates a 1470×1470 page: a 13-inch MacBook Air's width, so sites keep their desktop layout, and tall enough that dialog buttons such as Google's consent choices are on screen without scrolling. Set `JEV_VIEWPORT=WIDTHxHEIGHT` to change it. In a comparison of 1120×780, 1470×830, 1470×1470 and 1470×1660, the Google Flights benchmark took the same actions at every size with the same decision latency and confidence; the taller sizes only skipped the scroll to Google's consent buttons.
+
 Chrome connects through [Browser Harness](https://github.com/browser-use/browser-harness), installed by `uv sync`. Run `uv run browser-harness --doctor` if it needs connecting. Allow remote debugging in Chrome when prompted.
 
 `TEXT_MODEL_API_KEY` is an OpenRouter key in the example configuration. The current demo uses `inception/mercury-2.5` with reasoning disabled. Gemini, GLM, and DeepSeek can also use the OpenAI-compatible text helper; configure the appropriate model, endpoint, and reasoning setting. For OpenCode Go, set `TEXT_MODEL_BASE_URL=https://opencode.ai/zen/go/v1` and a model such as `glm-5.3-flash`; each run sends one stable `x-opencode-session`, and `TEXT_MODEL_REASONING` becomes `reasoning_effort` (default `low`).
