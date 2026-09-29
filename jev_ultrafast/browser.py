@@ -443,12 +443,12 @@ def browser_operation(request):
                   const r=e.getBoundingClientRect();
                   let x=r.x+r.width/2, y=r.y+r.height/2;
                   if (!r.width || !r.height || x<0 || y<0 || x>=innerWidth || y>=innerHeight) return null;
-                  if (!e.contains(document.elementFromPoint(x,y))) {
+                  if (!cache.within(e,cache.hit(x,y))) {
                     // A wrapped link's box centre sits on the text between its fragments; click the
                     // centre of a visible fragment instead, the same fallback the snapshot uses.
                     const f=[...e.getClientRects()].map(q=>[q.x+q.width/2,q.y+q.height/2,q.width,q.height])
                       .find(([fx,fy,w,h])=>w>0 && h>0 && fx>=0 && fy>=0 && fx<innerWidth && fy<innerHeight &&
-                        e.contains(document.elementFromPoint(fx,fy)));
+                        cache.within(e,cache.hit(fx,fy)));
                     if (!f) return null;
                     x=f[0]; y=f[1];
                   }
@@ -485,7 +485,7 @@ def browser_operation(request):
                             # Claiming picks the element that will receive keys; later checks require it unchanged.
                             try:
                                 claimed = bool(evaluate("""(([node,x,y,claim]) => {
-                                  const cache=window.__jevFast, e=cache?.nodes.get(node), a=document.activeElement;
+                                  const cache=window.__jevFast, e=cache?.nodes.get(node), a=cache?.active();
                                   const usable=f=>!!(f?.isConnected && !f.matches(':disabled') &&
                                     !f.closest('[aria-disabled="true"],[inert]') &&
                                     f.checkVisibility({checkOpacity:true,checkVisibilityCSS:true}) &&
@@ -495,8 +495,8 @@ def browser_operation(request):
                                   if (a===e) return usable(e) && !!(cache.typing=e);
                                   // The click opened an editor in the field's place, e.g. a combobox's search
                                   // popup. It holds focus and sits under the clicked point: the same field.
-                                  const hit=document.elementFromPoint(x,y);
-                                  return !!(hit && (a===hit || a?.contains(hit)) && usable(a) && (cache.typing=a));
+                                  const hit=cache.hit(x,y);
+                                  return !!(hit && cache.within(a,hit) && usable(a) && (cache.typing=a));
                                 })(""" + json.dumps([action["node"], local_x, local_y, claim]) + ")"))
                                 if claimed and frame:
                                     # Keys go to the page's focused frame, so the page must focus this one.

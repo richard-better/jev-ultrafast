@@ -68,6 +68,22 @@ def check(browser, field, setup, expected):
         assert error is not None, ("Expected a non-retryable error", actual)
 
 
+def check_shadow(browser):
+    """Controls in an open shadow root are offered, typed into and clicked like any other."""
+    browser.evaluate("""document.body.innerHTML='<div id="host"></div>';
+      document.getElementById('host').attachShadow({mode:'open'}).innerHTML=
+        '<label for="q">Shadow search</label><input id="q" style="display:block;width:200px;height:30px">'+
+        '<button onclick="this.dataset.clicks=+(this.dataset.clicks||0)+1">Shadow go</button>';""")
+    page = browser.observe(screenshot=False)
+    field = next(a for a in page["actions"] if a["label"] == "Shadow search" and a["kind"] == "fill")
+    assert browser.act(field, page, text="replacement") == {"executed": field["id"]}
+    page = browser.observe(screenshot=False)
+    browser.act(next(a for a in page["actions"] if a["label"] == "Shadow go"), page)
+    actual = browser.evaluate("""(root => [root.getElementById('q').value, root.querySelector('button').dataset.clicks])
+      (document.getElementById('host').shadowRoot)""")
+    assert actual == ["replacement", "1"], actual
+
+
 def main():
     cases = [
         ("input replacement", INPUT, "", "typed"),
@@ -116,7 +132,14 @@ def main():
             except (AssertionError, ValueError, RuntimeError) as error:
                 failures.append(label)
                 print("FAIL:", label, str(error))
-        total = len(cases) + len(click_only_fields)
+        try:
+            check_shadow(browser)
+            passed += 1
+            print("PASS: open shadow root field and button")
+        except (AssertionError, ValueError, RuntimeError, StopIteration) as error:
+            failures.append("open shadow root")
+            print("FAIL: open shadow root", str(error))
+        total = len(cases) + len(click_only_fields) + 1
         print(f"{passed}/{total} text targeting checks passed; no model calls")
     finally:
         try:

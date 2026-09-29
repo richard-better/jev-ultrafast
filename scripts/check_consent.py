@@ -21,9 +21,11 @@ from jev_ultrafast import Agent
 from jev_ultrafast.browser import Browser
 from jev_ultrafast.demo import load_environment
 
+# Bottom bars leave the page usable, so its controls stay offered beside them.
+NON_BLOCKING = {"inline", "shadow-open", "shadow-closed"}
 KNOWN_GAPS = {
-    "shadow-open": "snapshot.js does not descend into shadow roots",
-    "shadow-closed": "closed shadow roots are unreachable from page scripts",
+    "shadow-closed": "closed shadow roots are unreachable from page scripts; needs the accessibility tree",
+    "shadow-closed-overlay": "closed shadow roots are unreachable from page scripts; needs the accessibility tree",
 }
 
 SHOP = """
@@ -51,8 +53,9 @@ LISTEN = """<script>addEventListener('message',e=>{if(typeof e.data==='string'&&
   window.consent=e.data.slice(8);document.querySelector('iframe.consent')?.remove();}});</script>"""
 
 
-def shadow(mode):
-    return f"""<div id="consent-host" style="position:fixed;left:0;right:0;bottom:0;z-index:10"></div>
+def shadow(mode, blocking=False):
+    place = "inset:0;background:rgba(0,0,0,.6)" if blocking else "left:0;right:0;bottom:0"
+    return f"""<div id="consent-host" style="position:fixed;{place};z-index:10"></div>
 <script>const root=document.getElementById('consent-host').attachShadow({{mode:'{mode}'}});
 root.innerHTML=`<style>div{{background:#222;color:#fff;padding:20px}}</style><div>{BUTTONS}</div>`;
 root.querySelectorAll('button').forEach(b=>b.onclick=()=>decide(b.textContent.startsWith('Reject')?'rejected':'accepted'));
@@ -81,6 +84,8 @@ def pages(frame_origin):
         + LISTEN,
         "shadow-open": SHOP + shadow("open"),
         "shadow-closed": SHOP + shadow("closed"),
+        "shadow-open-overlay": SHOP + shadow("open", blocking=True),
+        "shadow-closed-overlay": SHOP + shadow("closed", blocking=True),
     }
 
 
@@ -126,7 +131,7 @@ def check(browser, name):
         offered = labels(page)
     if "Reject all" not in offered:
         return False, f"Reject all not offered; offered: {sorted(offered)[:8]}"
-    if "Search" in offered and name not in {"inline"}:
+    if "Search" in offered and name not in NON_BLOCKING:
         return False, "controls under a blocking banner were offered"
     browser.act(offered["Reject all"], page)
     time.sleep(0.2)
