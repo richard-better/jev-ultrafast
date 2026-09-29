@@ -628,7 +628,7 @@ def test_fingerprint_ignores_document_height_but_not_scroll_position():
     assert fingerprint(p) != fingerprint(other)
 
 
-@pytest.mark.parametrize("changed", ["Departure", "Where from?", "Where to?", "year"])
+@pytest.mark.parametrize("changed", ["Departure", "Where from?", "Where to?", "year", "results"])
 def test_flight_verification_rejects_wrong_trip(changed):
     from examples.flights import DEPARTURE, verify
 
@@ -642,7 +642,7 @@ def test_flight_verification_rejects_wrong_trip(changed):
                 ("Where from?", "Zürich"),
                 ("Where to?", "London"),
                 ("Departure", DEPARTURE.short_weekday),
-                (f"Nonstop flight on {DEPARTURE.long_weekday}. Select flight", ""),
+                (f"Flight details. Leaves Zurich Airport at 6:15 AM on {DEPARTURE.long_weekday}.", ""),
             ]
         ],
     }
@@ -650,6 +650,9 @@ def test_flight_verification_rejects_wrong_trip(changed):
     if changed == "year":
         wrong_year = str(DEPARTURE.date.year + 1)
         actual["text"] = actual["text"].replace(str(DEPARTURE.date.year), wrong_year)
+    elif changed == "results":
+        flight = next(a for a in actual["actions"] if a["label"].startswith("Flight details."))
+        flight["label"] = "Flight details. Leaves Zurich Airport at 6:15 AM on a different day."
     else:
         next(a for a in actual["actions"] if a["label"] == changed)["value"] = "wrong"
     assert not verify(actual)["passed"]
