@@ -28,7 +28,7 @@ Every observation produces a new element table:
 ...
 ```
 
-The operations are `CLICK`, `TYPE_TEXT`, `SELECT`, `SCROLL_UP`, `SCROLL_DOWN`, `WAIT`, `DONE`, and `BLOCKED`. Only supported operations and targets are offered.
+The operations are `CLICK`, `TYPE_TEXT`, `SELECT`, `SCROLL_UP`, `SCROLL_DOWN`, `WAIT`, `DONE`, and `BLOCKED`, plus named nested-region scroll operations when a visible scroll container is sampled. Only supported operations and targets are offered.
 
 ```text
                       one TypeSafe request
@@ -104,6 +104,7 @@ uv run --env-file .env python examples/run.py \
 - **Wait for useful state.** After typing into a combobox, wait for visible suggestions, capped at 200 ms. After clicking a same-tab HTTP(S) link to a different URL, wait for the URL or document to change, capped at 1,500 ms. Downloads and links targeting other tabs keep the fast path. Other interactions get at most two animation frames or 50 ms. These reads happen after execution is logged.
 - **Keep hidden tabs rendering.** Focus emulation prevents background animation throttling without switching Chrome's visible tab.
 - **Send visible text.** Offscreen article bodies and footers do not fill the model context.
+- **Target visible nested scrolling.** Sampled scrollable feeds and sidebars become named, freshness-checked actions.
 - **Reuse an interrupted text request.** A generated value survives a stale-page retry only if the entire text-helper input is unchanged.
 
 Every executed target is resolved from an observed node. The executor rechecks page freshness and click occlusion. Model output never becomes selectors, coordinates, shell commands, or executable JavaScript. Text-helper output must parse as a small JSON object before typing.
@@ -129,7 +130,7 @@ In six alternating runs with identical models and settings, both versions passed
 
 The same policy opened the requested Wikipedia article in **2.798 s** and passed a local hotel search/filter task in **1.896 s**. Runs, failures, source hashes, and measurement boundaries are in [performance.md](docs/performance.md).
 
-A `DONE` choice still requires independent outcome verification. The DOM reader handles common HTML and ARIA controls, not the full accessible-name specification. Shadow roots, frames, canvas, uploads, pop-up tabs, nested scrolling, and arbitrary keyboard widgets remain outside this MVP. Owned tabs share the existing Chrome profile.
+A `DONE` choice still requires independent outcome verification. The DOM reader handles common HTML and ARIA controls and sampled visible scroll regions, not the full accessible-name specification. Shadow roots, frames, canvas, uploads, pop-up tabs, obscured scroll containers, and arbitrary keyboard widgets remain outside this MVP. Owned tabs share the existing Chrome profile.
 
 If browser execution is interrupted, the action may already have taken effect even
 though its reply was lost. The agent stops that run, records `execution: "unknown"`
