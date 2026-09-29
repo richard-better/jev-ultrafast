@@ -6,6 +6,7 @@ page shows the requested search.
 """
 
 import sys
+import time
 from pathlib import Path
 from unittest.mock import patch
 
@@ -24,11 +25,17 @@ def decision(choice, operation):
 
 
 def main():
-    choices = iter([
-        decision("open_google_flights_one_way", "OPEN_GOOGLE_FLIGHTS_ONE_WAY"),
-        decision("DONE", "DONE"),
-    ])
-    with patch.object(loop, "choose", side_effect=lambda *_: next(choices)), \
+    # Open the shortcut once, then finish. A DONE made while results still load is rightly
+    # discarded as stale and asked again, so answer DONE for every later decision.
+    calls = []
+
+    def choose(*_):
+        calls.append(1)
+        if len(calls) == 1:
+            return decision("open_google_flights_one_way", "OPEN_GOOGLE_FLIGHTS_ONE_WAY")
+        return decision("DONE", "DONE")
+
+    with patch.object(loop, "choose", side_effect=choose), \
             patch.object(loop, "shortcut_parameters", return_value=(VALUES, {"model": "scripted", "latency_ms": 0})):
         with loop.Agent("https://www.google.com/travel/flights?hl=en", "Scripted", url_map=str(MAP)) as agent:
             offered = [a["id"] for a in agent.state["page"]["actions"] if a["kind"] == "shortcut"]
@@ -41,10 +48,13 @@ def main():
             assert opened["text"].startswith("https://www.google.com/travel/flights?hl=en&q=Flights%20from%20Zurich")
             assert opened["page_changed"] is True
             print("PASS: the chosen entry navigated to its built URL and was logged as a shortcut")
-            for _ in range(40):
+            # Google's results arrive after the navigation settles; allow them up to 15 seconds.
+            deadline = time.monotonic() + 15
+            while True:
                 checks = verify(agent.browser.observe(screenshot=False))["checks"]
-                if all(checks[name] for name in CONTENT_CHECKS):
+                if all(checks[name] for name in CONTENT_CHECKS) or time.monotonic() > deadline:
                     break
+                time.sleep(0.25)
             assert all(checks[name] for name in CONTENT_CHECKS), checks
             print("PASS: the page shows the requested route, date and results")
     elsewhere = loop.url_maps.actions(loop.url_maps.load(str(MAP)), "https://www.google.com/search?q=flights")
