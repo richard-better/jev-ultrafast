@@ -13,6 +13,7 @@ def focus_run(monkeypatch, focused, after_select_all):
         result = {"exceptionDetails": {"text": "Execution context destroyed"}}
     evaluations = iter([
         {"result": {"value": {"x": 40, "y": 40}}},
+        {"result": {}},  # focus settled
         *([{"result": {"value": True}}] if after_select_all else []),
         result,
     ])
@@ -70,7 +71,7 @@ def test_click_does_not_require_keyboard_focus(monkeypatch):
 
 
 def test_focused_fill_inserts_the_requested_text_once(monkeypatch):
-    evaluations = iter([{"x": 40, "y": 40}, True, True])
+    evaluations = iter([{"x": 40, "y": 40}, None, True, True])
 
     def cdp(method, **_params):
         return {"result": {"value": next(evaluations)}} if method == "Runtime.evaluate" else {}
@@ -85,9 +86,12 @@ def test_focused_fill_inserts_the_requested_text_once(monkeypatch):
     assert result == {"executed": "e1"}
     assert [call.args[0] for call in calls.call_args_list] == [
         "Runtime.evaluate", "Input.dispatchMouseEvent", "Input.dispatchMouseEvent",
-        "Runtime.evaluate", "Input.dispatchKeyEvent", "Input.dispatchKeyEvent",
+        "Runtime.evaluate", "Runtime.evaluate", "Input.dispatchKeyEvent", "Input.dispatchKeyEvent",
         "Runtime.evaluate", "Input.insertText",
     ]
+    # Focus settles after the click and before the target is claimed or any key is sent.
+    settle = calls.call_args_list[3]
+    assert settle.kwargs["awaitPromise"] is True and "focusin" in settle.kwargs["expression"]
     assert [call.kwargs["type"] for call in calls.call_args_list if call.args[0] == "Input.dispatchKeyEvent"] == [
         "keyDown", "keyUp",
     ]

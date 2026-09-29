@@ -34,6 +34,19 @@ def viewport():
         raise ValueError(f"JEV_VIEWPORT {raw!r} is outside 320-4096 pixels per side")
     return width, height
 
+# Resolves once focus has not moved for 50 ms, or after 250 ms at most.
+FOCUS_SETTLED = """new Promise(resolve => {
+  const start=performance.now(); let last=start;
+  const moved=()=>{ last=performance.now(); };
+  document.addEventListener('focusin', moved, true);
+  const check=()=>{
+    const now=performance.now();
+    if (now-last<50 && now-start<250) return requestAnimationFrame(check);
+    document.removeEventListener('focusin', moved, true);
+    resolve();
+  };
+  requestAnimationFrame(check);
+})"""
 # Map a point inside a frame to this viewport, only if the frame element itself is hit there.
 PLACE = """(([node,x,y]) => {
   const f=window.__jevFast?.nodes.get(node);
@@ -391,16 +404,17 @@ def browser_operation(request):
             raise StalePage("Document changed during evaluation")
         return result.get("result", {}).get("value")
 
-    def evaluate(expression):
+    def evaluate(expression, wait=False):
         # Element-side work runs in the action's own frame; input always goes through the page.
+        promise = {"awaitPromise": True} if wait else {}
         if frame:
             context = {} if frame["context"] is None else {"contextId": frame["context"]}
             result = cdp(
                 "Runtime.evaluate", session_id=frame["session"], _response_timeout=CDP_RESPONSE_TIMEOUT,
-                expression=expression, returnByValue=True, **context,
+                expression=expression, returnByValue=True, **context, **promise,
             )
         else:
-            result = call("Runtime.evaluate", expression=expression, returnByValue=True)
+            result = call("Runtime.evaluate", expression=expression, returnByValue=True, **promise)
         if result.get("exceptionDetails"):
             if operation == "act" and request["action"]["kind"] == "select":
                 raise RuntimeError("Dropdown execution was interrupted; inspect before retrying.")
@@ -530,6 +544,12 @@ def browser_operation(request):
                             except StalePage:
                                 return False
 
+                        # A click can move focus a few frames later, e.g. when a field opens its search
+                        # popup. Let focus settle before choosing where keys go, so none land mid-move.
+                        try:
+                            evaluate(FOCUS_SETTLED, wait=True)
+                        except StalePage:
+                            pass
                         if not text_target(claim=True):
                             # Focus moved somewhere other than the clicked field. No key was sent, so the
                             # outcome is known: a click. The next observation shows where focus went.
