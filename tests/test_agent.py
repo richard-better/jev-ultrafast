@@ -24,6 +24,9 @@ def page():
             {"id": "e3", "kind": "click", "label": "Go", "role": "button", "value": "", "node": 20},
             {"id": "wait", "kind": "wait", "label": "Wait"},
         ],
+        # marker[0] is performance.timeOrigin: stable within one document,
+        # fresh after every full navigation.
+        "marker": [1234.0, "https://example.test/", 0, 0, 1280, 800, None, None, None, None, 0.0],
     }
     state["fingerprint"] = fingerprint(state)
     return state
@@ -410,6 +413,42 @@ def test_stale_text_cache_does_not_cross_same_labeled_fields(runner, monkeypatch
     # The next decision picks the other same-labeled field; the cache must miss.
     runner.state["decision"] = decision("e2")
     runner.command("act", {"fingerprint": runner.state["page"]["fingerprint"]})
+    assert helper.call_count == 2
+    typed = [c.kwargs["text"] for c in runner.state["browser"].act.call_args_list]
+    assert typed == ["John", "Jane"]
+    assert runner.pending_text is None
+
+
+def test_stale_text_cache_does_not_cross_navigation(runner, monkeypatch):
+    """A cached value must not survive a full navigation: node ids restart at 1
+    in the new document (window.__jevFast re-inits), so the same node id can name
+    a different element. The cache key carries the document-scoped marker token.
+    """
+    runner.state["page"]["actions"] = [
+        {"id": "e1", "kind": "fill", "label": "Name", "role": "textbox", "value": "", "node": 10},
+        {"id": "wait", "kind": "wait", "label": "Wait"},
+    ]
+    runner.state["page"]["fingerprint"] = fingerprint(runner.state["page"])
+    old = runner.state["page"]
+    ctx1 = model.field_context("Find a book", old["actions"][0], old, [])
+    # New document: byte-identical url/title/text and the same node id for the
+    # same-labeled field, but a fresh performance.timeOrigin (marker[0]).
+    new = deepcopy(old)
+    new["marker"] = [9999.0, "https://example.test/", 0, 0, 1280, 800, None, None, None, None, 0.0]
+    new["fingerprint"] = fingerprint(new)
+    ctx2 = model.field_context("Find a book", new["actions"][0], new, [])
+    assert ctx1 == ctx2  # identical helper input, different document
+    helper = Mock(side_effect=[("John", {"model": "test", "latency_ms": 10}),
+                               ("Jane", {"model": "test", "latency_ms": 10})])
+    monkeypatch.setattr(loop, "field_text", helper)
+    runner.state["browser"].act.side_effect = [StalePage("Changed before input"), {"executed": "e1"}]
+    with pytest.raises(StalePage):
+        runner.command("act", {"fingerprint": old["fingerprint"]})
+    # The tick handler re-observes after navigation; the decision picks the
+    # same-labeled field in the new document. The cache must miss.
+    runner.state["page"] = new
+    runner.state["decision"] = decision("e1")
+    runner.command("act", {"fingerprint": new["fingerprint"]})
     assert helper.call_count == 2
     typed = [c.kwargs["text"] for c in runner.state["browser"].act.call_args_list]
     assert typed == ["John", "Jane"]

@@ -7,7 +7,7 @@ Read README.md before editing. Keep the loop small: page -> indexed elements -> 
 - Be honest in code, docs, and evidence. Never add workarounds to the core or the product to make a task, check, or benchmark pass; fix the real cause, or report the gap.
 - TypeSafe chooses an operation and operation-specific target heads in one request. Consume only the selected operation's target.
 - Targets must map to observed elements and supported operations. Never let the model emit selectors or executable code.
-- TYPE_TEXT invokes the text LLM. Cache a stale retry's value only while its entire helper input is identical and it targets the same element (compare the action's code-owned node identity).
+- TYPE_TEXT invokes the text LLM. Cache a stale retry's value only while its entire helper input is identical and it targets the same element (compare the action's code-owned node identity) within the same document (compare the page marker's document-scoped token, which changes on navigation).
 - Never retry a browser mutation. Log execution before observing its result.
 - If execution is interrupted without a pre-input stale rejection, stop the run and preserve an unknown execution record. Inspect the page before starting over; a missing reply is not evidence of no side effect.
 - Type only into the observed field, or an editor its click opened that holds focus under the clicked point. If the click moved focus anywhere else before any key, log a confirmed click with no text and continue. Focus lost after a key is unknown: stop.
