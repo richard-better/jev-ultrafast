@@ -58,7 +58,10 @@
       if (['button','submit','reset','image'].includes(e.type)) return 'button';
       if (e.type==='search') return 'searchbox';
       if (e.type==='number') return 'spinbutton';
-      if (['text','email','url','tel'].includes(e.type)) return 'textbox';
+      if (['text','email','url','tel','date','time','datetime-local','month','week'].includes(e.type))
+        return 'textbox';
+      if (e.type==='range') return 'slider';
+      if (e.type==='color') return 'button';
     }
     if (e.hasAttribute('onclick') || e.tabIndex>=0) return 'button';
     return null;
