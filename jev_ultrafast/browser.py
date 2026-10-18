@@ -1,5 +1,6 @@
 """Observed actions through Browser Harness; one CDP session, no per-step subprocess."""
 
+import functools
 import hashlib
 import json
 import os
@@ -10,6 +11,8 @@ from pathlib import Path
 from browser_harness.admin import daemon_browser_ready, ensure_daemon
 from browser_harness.helpers import cdp
 
+from . import tracing
+
 # Atomically read visible content and controls, preserving actual DOM node identity.
 READ_STATE = Path(__file__).with_name("snapshot.js").read_text(encoding="utf-8")
 MARKER = f"(() => {{ const state={READ_STATE}; return state?.marker ?? null; }})()"
@@ -19,7 +22,22 @@ class StalePage(ValueError):
     """A decision no longer refers to the observed page."""
 
 
+def stage(name):
+    """Trace a whole browser method as one `browser.stage` span."""
+
+    def decorate(method):
+        @functools.wraps(method)
+        def traced(*args, **kwargs):
+            with tracing.span("browser.stage", stage=name):
+                return method(*args, **kwargs)
+
+        return traced
+
+    return decorate
+
+
 class Browser:
+    @stage("start")
     def __init__(self, url):
         if os.environ.get("BH_REQUIRE_EXISTING_DAEMON") == "1":
             if not daemon_browser_ready():
@@ -65,47 +83,49 @@ class Browser:
             raise StalePage("Document changed during evaluation")
         return response.get("result", {}).get("value")
 
+    @stage("observe")
     def observe(self, screenshot=True):
         if getattr(self, "after_input", None):
             action, self.after_input = self.after_input, None
             # This is read-only and happens after execution was logged, even if navigation interrupts it.
             try:
-                self.call(
-                    "Runtime.evaluate",
-                    expression="""(action => new Promise(resolve => {
-                      const field=window.__jevFast?.nodes.get(action.node);
-                      const autocomplete=action.kind==='fill' && field?.getAttribute('role')==='combobox';
-                      const navigation=action.kind==='click' && action.navigation &&
-                        ['_self','_top','_parent'].includes(action.navigation.target.toLowerCase()) &&
-                        action.navigation.url!==action.source_url;
-                      let frames=0, stopped=false;
-                      const finish=()=>{stopped=true;resolve()};
-                      setTimeout(finish,navigation ? 1500 : autocomplete ? 200 : 50);
-                      const ready=()=>{
-                        if (stopped) return;
-                        let suggestionsReady=true;
-                        if (autocomplete) {
-                          const ids=(field?.getAttribute('aria-controls')||field?.getAttribute('aria-owns')||'')
-                            .split(/\\s+/).filter(Boolean);
-                          const roots=ids.length ?
-                            ids.map(id=>document.getElementById(id)).filter(Boolean) : [document];
-                          const options=roots.flatMap(root=>[...root.querySelectorAll('[role="option"]')]);
-                          suggestionsReady=options.some(e=>{
-                            const r=e.getBoundingClientRect();
-                            return r.width && r.height && r.bottom>0 && r.top<innerHeight &&
-                              e.checkVisibility({checkOpacity:true,checkVisibilityCSS:true});
-                          });
-                        }
-                        const navigated=location.href!==action.source_url ||
-                          performance.timeOrigin!==action.source_document;
-                        if (++frames>=2 && (!navigation || navigated) && suggestionsReady) finish();
-                        else requestAnimationFrame(ready);
-                      };
-                      requestAnimationFrame(ready);
-                    }))(""" + json.dumps(action) + ")",
-                    awaitPromise=True,
-                    returnByValue=True,
-                )
+                with tracing.span("browser.stage", stage="settle"):
+                    self.call(
+                        "Runtime.evaluate",
+                        expression="""(action => new Promise(resolve => {
+                          const field=window.__jevFast?.nodes.get(action.node);
+                          const autocomplete=action.kind==='fill' && field?.getAttribute('role')==='combobox';
+                          const navigation=action.kind==='click' && action.navigation &&
+                            ['_self','_top','_parent'].includes(action.navigation.target.toLowerCase()) &&
+                            action.navigation.url!==action.source_url;
+                          let frames=0, stopped=false;
+                          const finish=()=>{stopped=true;resolve()};
+                          setTimeout(finish,navigation ? 1500 : autocomplete ? 200 : 50);
+                          const ready=()=>{
+                            if (stopped) return;
+                            let suggestionsReady=true;
+                            if (autocomplete) {
+                              const ids=(field?.getAttribute('aria-controls')||field?.getAttribute('aria-owns')||'')
+                                .split(/\\s+/).filter(Boolean);
+                              const roots=ids.length ?
+                                ids.map(id=>document.getElementById(id)).filter(Boolean) : [document];
+                              const options=roots.flatMap(root=>[...root.querySelectorAll('[role="option"]')]);
+                              suggestionsReady=options.some(e=>{
+                                const r=e.getBoundingClientRect();
+                                return r.width && r.height && r.bottom>0 && r.top<innerHeight &&
+                                  e.checkVisibility({checkOpacity:true,checkVisibilityCSS:true});
+                              });
+                            }
+                            const navigated=location.href!==action.source_url ||
+                              performance.timeOrigin!==action.source_document;
+                            if (++frames>=2 && (!navigation || navigated) && suggestionsReady) finish();
+                            else requestAnimationFrame(ready);
+                          };
+                          requestAnimationFrame(ready);
+                        }))(""" + json.dumps(action) + ")",
+                        awaitPromise=True,
+                        returnByValue=True,
+                    )
             except RuntimeError:
                 pass
         for attempt in range(10):
@@ -117,9 +137,10 @@ class Browser:
                 if attempt == 9:
                     raise
                 # Navigation can outlive the fast action loop. Retry observations only, never the mutation.
-                time.sleep(min(0.05 * (attempt + 1), 0.25))
+                tracing.wait("navigation", min(0.05 * (attempt + 1), 0.25))
         raise StalePage("Page did not settle")
 
+    @stage("fresh")
     def fresh(self, page, action=None):
         if action is not None and action["kind"] == "scroll" and type(action.get("node")) is int:
             current = self.evaluate(
@@ -147,17 +168,19 @@ class Browser:
             return current == [page["page_key"], page["guards"].get(str(node))]
         return self.evaluate(MARKER) == page["marker"]
 
+    @stage("act")
     def act(self, action, page, text=None):
         if not self.fresh(page, action):
             raise StalePage("Page changed since this decision. Observe again.")
         if action["kind"] == "wait":
-            time.sleep(0.1)
+            tracing.wait("wait_action", 0.1)
         result = browser_operation({"operation": "act", "session": self.session, "action": action, "text": text})
         self.after_input = action if action["kind"] != "wait" else None
         if self.after_input and action.get("navigation"):
             self.after_input = {**action, "source_url": page["url"], "source_document": page["marker"][0]}
         return result
 
+    @stage("close")
     def close(self):
         if self.target:
             cdp("Target.closeTarget", targetId=self.target)
@@ -234,96 +257,102 @@ def browser_operation(request):
             if kind == "select" and type(action.get("option_node")) is not int:
                 raise ValueError("Invalid observed option node")
             # Code-owned node IDs refer to actual observed elements, never model-generated selectors.
-            target = evaluate("""(action => {
-              const cache=window.__jevFast, e=cache?.nodes.get(action.node);
-              if (!e?.isConnected || e.matches(':disabled') || e.closest('[aria-disabled="true"],[inert]') ||
-                  !e.checkVisibility({checkOpacity:true,checkVisibilityCSS:true})) return null;
-              if (action.kind==='fill' && !cache.editable(e)) return null;
-              const r=e.getBoundingClientRect();
-              let x=r.x+r.width/2, y=r.y+r.height/2;
-              if (!r.width || !r.height || x<0 || y<0 || x>=innerWidth || y>=innerHeight) return null;
-              if (!e.contains(document.elementFromPoint(x,y))) {
-                // A wrapped link's box centre sits on the text between its fragments; click the
-                // centre of a visible fragment instead, the same fallback the snapshot uses.
-                const f=[...e.getClientRects()].map(q=>[q.x+q.width/2,q.y+q.height/2,q.width,q.height])
-                  .find(([fx,fy,w,h])=>w>0 && h>0 && fx>=0 && fy>=0 && fx<innerWidth && fy<innerHeight &&
-                    e.contains(document.elementFromPoint(fx,fy)));
-                if (!f) return null;
-                x=f[0]; y=f[1];
-              }
-              if (action.kind==='select') {
-                const o=window.__jevFast.nodes.get(action.option_node);
-                if (e.tagName!=='SELECT' || o?.tagName!=='OPTION' || !o.isConnected || o.closest('select')!==e ||
-                    o.value!==action.value || o.selected || o.disabled || o.closest('optgroup[disabled]')) return null;
-                // Values need not be unique. Select the exact option that was observed.
-                if (e.multiple) o.selected=true;
-                else e.selectedIndex=o.index;
-                e.dispatchEvent(new Event('input',{bubbles:true}));
-                e.dispatchEvent(new Event('change',{bubbles:true}));
-              }
-              return {x,y};
-            })(""" + json.dumps(action) + ")")
+            with tracing.span("browser.stage", stage="target"):
+                target = evaluate("""(action => {
+                  const cache=window.__jevFast, e=cache?.nodes.get(action.node);
+                  if (!e?.isConnected || e.matches(':disabled') || e.closest('[aria-disabled="true"],[inert]') ||
+                      !e.checkVisibility({checkOpacity:true,checkVisibilityCSS:true})) return null;
+                  if (action.kind==='fill' && !cache.editable(e)) return null;
+                  const r=e.getBoundingClientRect();
+                  let x=r.x+r.width/2, y=r.y+r.height/2;
+                  if (!r.width || !r.height || x<0 || y<0 || x>=innerWidth || y>=innerHeight) return null;
+                  if (!e.contains(document.elementFromPoint(x,y))) {
+                    // A wrapped link's box centre sits on the text between its fragments; click the
+                    // centre of a visible fragment instead, the same fallback the snapshot uses.
+                    const f=[...e.getClientRects()].map(q=>[q.x+q.width/2,q.y+q.height/2,q.width,q.height])
+                      .find(([fx,fy,w,h])=>w>0 && h>0 && fx>=0 && fy>=0 && fx<innerWidth && fy<innerHeight &&
+                        e.contains(document.elementFromPoint(fx,fy)));
+                    if (!f) return null;
+                    x=f[0]; y=f[1];
+                  }
+                  if (action.kind==='select') {
+                    const o=window.__jevFast.nodes.get(action.option_node);
+                    if (e.tagName!=='SELECT' || o?.tagName!=='OPTION' || !o.isConnected || o.closest('select')!==e ||
+                        o.value!==action.value || o.selected || o.disabled ||
+                        o.closest('optgroup[disabled]')) return null;
+                    // Values need not be unique. Select the exact option that was observed.
+                    if (e.multiple) o.selected=true;
+                    else e.selectedIndex=o.index;
+                    e.dispatchEvent(new Event('input',{bubbles:true}));
+                    e.dispatchEvent(new Event('change',{bubbles:true}));
+                  }
+                  return {x,y};
+                })(""" + json.dumps(action) + ")")
             if target is None:
                 if kind == "select":
                     raise RuntimeError("Dropdown execution was not confirmed; inspect before retrying.")
                 raise StalePage("Target changed or is covered. Observe again.")
-            if kind != "select":
-                x, y = target["x"], target["y"]
-                for event in ("mousePressed", "mouseReleased"):
-                    call("Input.dispatchMouseEvent", type=event, x=x, y=y, button="left", clickCount=1)
-                if kind == "fill":
-                    def text_target(claim):
-                        # Claiming picks the element that will receive keys; later checks require it unchanged.
-                        try:
-                            return bool(evaluate("""(([node,x,y,claim]) => {
-                              const cache=window.__jevFast, e=cache?.nodes.get(node), a=document.activeElement;
-                              const usable=f=>!!(f?.isConnected && !f.matches(':disabled') &&
-                                !f.closest('[aria-disabled="true"],[inert]') &&
-                                f.checkVisibility({checkOpacity:true,checkVisibilityCSS:true}) && cache.editable(f));
-                              if (!claim) return !!cache?.typing && a===cache.typing && usable(a);
-                              cache.typing=null;
-                              if (a===e) return usable(e) && !!(cache.typing=e);
-                              // The click opened an editor in the field's place, e.g. a combobox's search
-                              // popup. It holds focus and sits under the clicked point: the same field.
-                              const hit=document.elementFromPoint(x,y);
-                              return !!(hit && (a===hit || a?.contains(hit)) && usable(a) && (cache.typing=a));
-                            })(""" + json.dumps([action["node"], x, y, claim]) + ")"))
-                        except StalePage:
-                            return False
+            with tracing.span("browser.stage", stage="input"):
+                if kind != "select":
+                    x, y = target["x"], target["y"]
+                    for event in ("mousePressed", "mouseReleased"):
+                        call("Input.dispatchMouseEvent", type=event, x=x, y=y, button="left", clickCount=1)
+                    if kind == "fill":
+                        def text_target(claim):
+                            # Claiming picks the element that will receive keys; later checks require it unchanged.
+                            try:
+                                return bool(evaluate("""(([node,x,y,claim]) => {
+                                  const cache=window.__jevFast, e=cache?.nodes.get(node), a=document.activeElement;
+                                  const usable=f=>!!(f?.isConnected && !f.matches(':disabled') &&
+                                    !f.closest('[aria-disabled="true"],[inert]') &&
+                                    f.checkVisibility({checkOpacity:true,checkVisibilityCSS:true}) &&
+                                    cache.editable(f));
+                                  if (!claim) return !!cache?.typing && a===cache.typing && usable(a);
+                                  cache.typing=null;
+                                  if (a===e) return usable(e) && !!(cache.typing=e);
+                                  // The click opened an editor in the field's place, e.g. a combobox's search
+                                  // popup. It holds focus and sits under the clicked point: the same field.
+                                  const hit=document.elementFromPoint(x,y);
+                                  return !!(hit && (a===hit || a?.contains(hit)) && usable(a) && (cache.typing=a));
+                                })(""" + json.dumps([action["node"], x, y, claim]) + ")"))
+                            except StalePage:
+                                return False
 
-                    if not text_target(claim=True):
-                        # Focus moved somewhere other than the clicked field. No key was sent, so the
-                        # outcome is known: a click. The next observation shows where focus went.
-                        return {"executed": action["id"], "typed": False}
-                    call(
-                        "Input.dispatchKeyEvent",
-                        type="keyDown",
-                        key="a",
-                        code="KeyA",
-                        modifiers=4 if sys.platform == "darwin" else 2,
-                        commands=["selectAll"],
-                    )
-                    call(
-                        "Input.dispatchKeyEvent",
-                        type="keyUp",
-                        key="a",
-                        code="KeyA",
-                        modifiers=4 if sys.platform == "darwin" else 2,
-                    )
-                    # Page key handlers can redirect focus during Select All as well. Select All already
-                    # reached whatever held focus, so this outcome is unknown. Never retry it.
-                    if not text_target(claim=False):
-                        raise RuntimeError("Text target changed or lost focus; inspect before retrying.")
-                    call("Input.insertText", text=request["text"])
+                        if not text_target(claim=True):
+                            # Focus moved somewhere other than the clicked field. No key was sent, so the
+                            # outcome is known: a click. The next observation shows where focus went.
+                            return {"executed": action["id"], "typed": False}
+                        call(
+                            "Input.dispatchKeyEvent",
+                            type="keyDown",
+                            key="a",
+                            code="KeyA",
+                            modifiers=4 if sys.platform == "darwin" else 2,
+                            commands=["selectAll"],
+                        )
+                        call(
+                            "Input.dispatchKeyEvent",
+                            type="keyUp",
+                            key="a",
+                            code="KeyA",
+                            modifiers=4 if sys.platform == "darwin" else 2,
+                        )
+                        # Page key handlers can redirect focus during Select All as well. Select All already
+                        # reached whatever held focus, so this outcome is unknown. Never retry it.
+                        if not text_target(claim=False):
+                            raise RuntimeError("Text target changed or lost focus; inspect before retrying.")
+                        call("Input.insertText", text=request["text"])
         return {"executed": action["id"]}
 
-    info = evaluate(READ_STATE)
+    with tracing.span("browser.stage", stage="snapshot"):
+        info = evaluate(READ_STATE)
     if info is None:
         raise StalePage("Document is navigating")
     info["fingerprint"] = fingerprint(info)
     if request.get("screenshot", True):
         try:
-            info["screenshot"] = call("Page.captureScreenshot", format="jpeg", quality=72)["data"]
+            with tracing.span("browser.stage", stage="screenshot"):
+                info["screenshot"] = call("Page.captureScreenshot", format="jpeg", quality=72)["data"]
         except TimeoutError:
             # Screenshots do not drive the agent. A throttled background tab must
             # not discard an otherwise complete structured observation.
