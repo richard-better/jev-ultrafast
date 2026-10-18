@@ -861,6 +861,17 @@ def test_only_proven_progress_resets_the_no_progress_stop():
     assert not loop.stalled([{"page_changed": False, "kind": "click"}])
 
 
+def test_retyping_the_same_text_into_a_field_is_not_progress():
+    def fill(text, action="Where to?"):
+        return {"page_changed": True, "kind": "fill", "action": action, "text": text}
+
+    assert loop.stalled([fill("London"), fill("London"), fill("London")])
+    assert not loop.stalled([fill("Lon"), fill("London"), fill("London")])
+    assert not loop.stalled([fill("London", "Where from?"), fill("London"), fill("London")])
+    click = {"page_changed": True, "kind": "click", "action": "Next month", "text": None}
+    assert not loop.stalled([click, click, click])
+
+
 def test_alternating_failed_observations_still_block_a_stalled_run(runner):
     """Regression test for https://github.com/browser-use/jev-ultrafast/issues/94.
 
