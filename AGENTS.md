@@ -2,7 +2,9 @@
 
 Read README.md before editing. Keep the loop small: page -> indexed elements -> operation + target -> execution.
 
-- The input is one natural-language goal. Do not add site-specific plans or hardcoded field values.
+- The input is one natural-language goal. Do not add site-specific plans or hardcoded field values to the loop, prompts, or core code.
+- We are experimenting with URL maps: loaded data files of URL patterns for sites where a pattern makes sense, such as a search that a URL can express. A map cuts the page work the agent has to do and scales across sites without site-specific code. The model only chooses a map entry; typed, validated parameters fill it, and code builds the URL on the entry's own site. The model never writes a URL.
+- Be honest in code, docs, and evidence. Never add workarounds to the core or the product to make a task, check, or benchmark pass; fix the real cause, or report the gap.
 - TypeSafe chooses an operation and operation-specific target heads in one request. Consume only the selected operation's target.
 - Targets must map to observed elements and supported operations. Never let the model emit selectors or executable code.
 - TYPE_TEXT invokes the text LLM. Cache a stale retry's value only while its entire helper input is identical.
