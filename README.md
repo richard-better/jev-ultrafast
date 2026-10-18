@@ -167,6 +167,8 @@ Tests are offline. `uv run python scripts/check_guards.py` checks real controls 
 after real clicks, text input, and dropdown selection on a local fixture, without
 model calls. Each case checks the actual DOM event count before and after a retry.
 
+`uv run python scripts/check_consent.py` serves consent banners from two local origins (inline, blocking overlay, below the fold, same- and cross-origin iframes, open and closed shadow roots) and checks that each banner's "Reject all" is offered, dismisses it, and leaves the page usable, without model calls. Shapes that do not work yet are listed as known gaps. `--live` also runs the real agent on each shape with paid model calls.
+
 `uv run python scripts/check_selects.py` checks native dropdown identity and freshness in a local browser, including duplicate values and stale options, without model calls.
 
 `uv run python scripts/check_navigation.py` checks delayed links, HTTP and same-document redirects, named targets, cancelled navigation, and fast-path exceptions in local browser fixtures without model calls. The link wait is a bounded opportunity for navigation to begin, not proof that a destination has finished loading or that the goal is complete; final outcomes still require independent verification.
