@@ -7,8 +7,9 @@ from copy import deepcopy
 from pathlib import Path
 
 from . import tracing
+from . import url_map as url_maps
 from .browser import Browser, StalePage
-from .model import action_space, choose, field_context, field_text
+from .model import action_space, choose, field_context, field_text, shortcut_parameters
 from .questions import MAX_STEPS
 
 
@@ -18,8 +19,8 @@ def stalled(history):
     Only an explicit ``page_changed=True`` counts as progress. An unobserved
     outcome (``page_changed=None`` after a failed post-action observation)
     must not reset the three-repeat no-progress check, or a stuck run keeps
-    spending model calls instead of stopping. Three identical fills in a row
-    also count as stalled.
+    spending model calls instead of stopping. Three identical fills or
+    shortcuts in a row also count as stalled.
     See https://github.com/browser-use/jev-ultrafast/issues/94.
     """
     recent = history[-3:]
@@ -27,20 +28,21 @@ def stalled(history):
         return False
     if all(entry["page_changed"] is not True and entry["kind"] != "wait" for entry in recent):
         return True
-    # Retyping the same text into the same field re-renders suggestions, so the page changes,
-    # but it is never progress.
-    first = recent[0]
-    return all(e["kind"] == "fill" and (e["action"], e["text"]) == (first["action"], first["text"]) for e in recent)
+    # Retyping the same text, or reopening the same shortcut URL, changes the page but is never progress.
+    same = {(e["kind"], e.get("action"), e.get("text")) for e in recent}
+    return len(same) == 1 and recent[0]["kind"] in {"fill", "shortcut"}
 
 
 class Agent:
-    def __init__(self, url, goals, *, record_dir=None, screenshots=False, max_steps=MAX_STEPS):
+    def __init__(self, url, goals, *, record_dir=None, screenshots=False, max_steps=MAX_STEPS, url_map=None):
         task = goals.strip() if isinstance(goals, str) else "\n".join(goals).strip()
         if not task:
             raise ValueError("Supply a task")
         if type(max_steps) is not int or max_steps < 1:
             raise ValueError("max_steps must be a positive integer")
         self.max_steps = max_steps
+        # Experimental URL maps: a map argument, or JEV_URL_MAP when none is given. Invalid maps fail here.
+        self.shortcuts = url_maps.load(url_map)
         plan = [task]
         self.pending_text = None
         # One session per run, so the text provider can route and cache it as one conversation.
@@ -53,7 +55,7 @@ class Agent:
             with tracing.within(self.trace):
                 self.browser = Browser(url)
                 try:
-                    page = self.browser.observe(screenshot=self.screenshots)
+                    page = self._observe(self.browser)
                 except BaseException as error:
                     # No caller holds this Agent yet, so this is the only place that can close the tab.
                     # An interrupt counts, and a failed close must not replace the error that caused it.
@@ -86,6 +88,13 @@ class Agent:
             if screenshot := page.get("screenshot"):
                 (self.record_dir / "000000.jpg").write_bytes(base64.b64decode(screenshot))
 
+    def _observe(self, browser):
+        page = browser.observe(screenshot=self.screenshots)
+        shortcuts = url_maps.actions(getattr(self, "shortcuts", []), page.get("url", ""))
+        if shortcuts:
+            page["actions"] = [*page["actions"], *shortcuts]
+        return page
+
     def snapshot(self):
         return {
             **deepcopy({k: v for k, v in self.state.items() if k != "browser"}),
@@ -114,7 +123,7 @@ class Agent:
                 # must not erase the stalled result and re-enable decisions.
                 state["status"] = "blocked" if stalled(state["history"]) else "ready"
                 if state["status"] == "ready":
-                    state["page"] = state["browser"].observe(screenshot=self.screenshots)
+                    state["page"] = self._observe(state["browser"])
                     state["elapsed_ms"] = round((time.perf_counter() - state["started_at"]) * 1000)
         elif name == "predict":
             if not state["browser"]:
@@ -124,7 +133,7 @@ class Agent:
             if state["started_at"] is None:
                 state["started_at"] = time.perf_counter()
             if not state["browser"].fresh(state["page"]):
-                state["page"] = state["browser"].observe(screenshot=self.screenshots)
+                state["page"] = self._observe(state["browser"])
             state["decision"] = None
             if len(state["decisions"]) >= self.max_steps * 2:
                 raise ValueError("Reached the demo's model-call budget")
@@ -171,6 +180,21 @@ class Agent:
                     text, helper = field_text(context, self.session)
                     self.pending_text = (context, text, helper)
                     state["text_calls"].append({**helper, "field": action["label"], "value": text})
+            elif action["kind"] == "shortcut":
+                if not state["browser"].fresh(page):
+                    raise StalePage("Page changed before filling the shortcut. Choose again.")
+                entry = next(e for e in self.shortcuts if e["id"] == action["shortcut"])
+                context = url_maps.context(entry, state["goal"], page, state["history"])
+                if self.pending_text and self.pending_text[0] == context:
+                    _, text, helper = self.pending_text
+                else:
+                    values, helper = shortcut_parameters(context, self.session)
+                    call = {**helper, "field": action["label"], "parameters": values, "value": None}
+                    state["text_calls"].append(call)
+                    # Validation happens before anything opens; an invalid value stops here.
+                    text = call["value"] = url_maps.build(entry, values)
+                    self.pending_text = (context, text, helper)
+                action = {**action, "url": text, "navigation": {"url": text, "target": "_self"}}
             # Browser.act checks freshness immediately before input, including after text generation.
             execution_error = None
             kind = action["kind"]
@@ -221,7 +245,7 @@ class Agent:
             if execution_error is not None:
                 raise execution_error
             try:
-                state["page"] = state["browser"].observe(screenshot=self.screenshots)
+                state["page"] = self._observe(state["browser"])
             except Exception:
                 # The action already executed and stays logged with
                 # page_changed=None. Still apply the no-progress check so a

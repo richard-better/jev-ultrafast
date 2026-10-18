@@ -85,7 +85,8 @@ finally:
         state["task_hash"] = hashlib.sha256(json.dumps([URL, GOALS]).encode()).hexdigest()
         state["configuration"] = {
             key: os.environ.get(key)
-            for key in ("TYPESAFE_MODEL", "TEXT_MODEL", "TEXT_MODEL_BASE_URL", "TEXT_MODEL_REASONING", "JEV_VIEWPORT")
+            for key in ("TYPESAFE_MODEL", "TEXT_MODEL", "TEXT_MODEL_BASE_URL", "TEXT_MODEL_REASONING", "JEV_VIEWPORT",
+                        "JEV_URL_MAP")
         }
         # A missing fresh observation must not turn the cached page into a successful verification.
         state["final_page"] = None
