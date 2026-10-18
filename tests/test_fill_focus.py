@@ -75,4 +75,6 @@ def test_focused_fill_inserts_the_requested_text_once(monkeypatch):
     ]
     key_down = next(call for call in calls.call_args_list if call.kwargs.get("type") == "keyDown")
     assert key_down.kwargs["commands"] == ["selectAll"]
-    assert calls.call_args.kwargs == {"session_id": "test", "text": "replacement"}
+    assert calls.call_args.kwargs == {
+        "session_id": "test", "_response_timeout": browser.CDP_RESPONSE_TIMEOUT, "text": "replacement",
+    }

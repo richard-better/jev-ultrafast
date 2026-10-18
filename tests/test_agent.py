@@ -488,6 +488,7 @@ def test_executor_scrolls_an_observed_region_at_a_safe_sample(monkeypatch, actio
         "Input.dispatchMouseEvent",
         {
             "session_id": "test",
+            "_response_timeout": browser.CDP_RESPONSE_TIMEOUT,
             "type": "mouseWheel",
             "x": 120,
             "y": 340,
@@ -497,25 +498,30 @@ def test_executor_scrolls_an_observed_region_at_a_safe_sample(monkeypatch, actio
     )
 
 
-def test_executor_preserves_page_scroll_coordinates(monkeypatch):
+def test_executor_scrolls_the_page_at_the_viewport_centre(monkeypatch):
     import jev_ultrafast.browser as browser
 
-    cdp = Mock(return_value={})
+    def respond(method, **_params):
+        return {"result": {"value": {"width": 1120, "height": 780}}} if method == "Runtime.evaluate" else {}
+
+    cdp = Mock(side_effect=respond)
     monkeypatch.setattr(browser, "cdp", cdp)
     browser_operation({
         "operation": "act",
         "session": "test",
         "action": {"id": "scroll_down", "kind": "scroll", "delta": 560},
     })
-    cdp.assert_called_once_with(
+    cdp.assert_called_with(
         "Input.dispatchMouseEvent",
         session_id="test",
+        _response_timeout=browser.CDP_RESPONSE_TIMEOUT,
         type="mouseWheel",
-        x=550,
-        y=650,
+        x=560,
+        y=390,
         deltaX=0,
         deltaY=560,
     )
+    assert cdp.call_count == 2
 
 
 def test_nested_scroll_freshness_binds_to_the_observed_region_state():
