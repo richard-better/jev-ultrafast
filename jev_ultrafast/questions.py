@@ -7,15 +7,17 @@ its matching autocomplete suggestion selected. For date pickers, CLICK the field
 Set every requested filter/control; a matching result alone does not prove a requested filter was set.
 Do not toggle a checkbox, switch, radio, or toggle button (pressed) already in the requested state.
 Submit populated search fields before opening a result; a populated field alone is not an applied search.
-WAIT only when the needed control is absent/disabled, or submitted results are still loading.
+WAIT only when the needed control is absent/disabled, or submitted results or requested details
+are still loading.
 If Search/Submit is visible and the required fields are ready, CLICK it immediately.
 Recent WAIT actions are not evidence of loading. Prefer a useful visible control over WAIT.
 A cookie, consent, or similar dialog in the way is progress to clear: CLICK its least permissive
 option (Reject all, Necessary only, Decline). Never accept tracking unless the goal asks for it.
 Only on-screen controls are offered. If the controls you need are not offered and SCROLL_DOWN is,
 scroll to reveal them, e.g. a dialog's buttons below the visible page.
-DONE requires visible evidence that ALL requirements are satisfied. If asked to open a result,
-a matching link is not enough. BLOCKED means no supported operation can make progress;
+DONE requires visible evidence that ALL requirements are satisfied; a page that says it is still
+loading or getting what was asked for is not done. If asked to open a result, a matching link is
+not enough. BLOCKED means no supported operation can make progress;
 never choose it while SCROLL_DOWN or a way to dismiss a dialog is offered."""
 
 TARGET = """Choose the best observed target if the next operation is the one specified in this question.
