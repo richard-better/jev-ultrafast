@@ -10,7 +10,7 @@
 
 Give it one goal. [TypeSafe's Jev](https://docs.typesafe.ai/introduction) picks an operation and an element. A small LLM writes text only when the operation is `TYPE_TEXT`.
 
-**Zürich → London on Google Flights in 7.1 seconds.** One natural-language goal, actual text generation, and loading waits included.
+**Zürich → London on Google Flights in 9.2 seconds.** One natural-language goal, actual text generation, and loading waits included.
 
 <a href="docs/demo.mp4"><img src="docs/demo.gif" alt="A real Google Flights search at 1× speed, with generated city names and dynamic operation/target decisions" width="100%" /></a>
 
@@ -69,7 +69,7 @@ The browser emulates a 1470×1470 page: a 13-inch MacBook Air's width, so sites 
 
 Chrome connects through [Browser Harness](https://github.com/browser-use/browser-harness), installed by `uv sync`. Run `uv run browser-harness --doctor` if it needs connecting. Allow remote debugging in Chrome when prompted.
 
-`TEXT_MODEL_API_KEY` is an OpenRouter key in the example configuration. The current demo uses `inception/mercury-2.5` with reasoning disabled. Gemini, GLM, and DeepSeek can also use the OpenAI-compatible text helper; configure the appropriate model, endpoint, and reasoning setting. For OpenCode Go, set `TEXT_MODEL_BASE_URL=https://opencode.ai/zen/go/v1` and a model such as `glm-5.3-flash`; each run sends one stable `x-opencode-session`, and `TEXT_MODEL_REASONING` becomes `reasoning_effort` (default `low`).
+`TEXT_MODEL_API_KEY` is an OpenRouter key in the example configuration. The current video uses `glm-5.3-flash` through OpenCode Go with reasoning effort `none`; earlier recordings used `inception/mercury-2.5` through OpenRouter. Gemini, GLM, and DeepSeek can also use the OpenAI-compatible text helper; configure the appropriate model, endpoint, and reasoning setting. For OpenCode Go, set `TEXT_MODEL_BASE_URL=https://opencode.ai/zen/go/v1` and a model such as `glm-5.3-flash`; each run sends one stable `x-opencode-session`, and `TEXT_MODEL_REASONING` becomes `reasoning_effort` (default `low`).
 
 ## Use the library
 
@@ -78,7 +78,7 @@ from jev_ultrafast import Agent
 
 with Agent(
     "https://www.google.com/travel/flights?hl=en",
-    "Find one-way flights from Zurich to London on September 20, 2026, "
+    "Find one-way flights from Zurich to London on October 29, 2026, "
     "for one adult in economy. Stop when matching flight options are visible.",
 ) as agent:
     for state in agent.run():
@@ -126,9 +126,9 @@ Native dropdowns retain the identity of each observed option, so duplicate value
 
 ## Evidence and limits
 
-The current video is a **7,073 ms** Google Flights run. Timing starts after initial page observation and includes model calls, generated text, browser work, stale decisions, and loading waits. A fresh independent check verifies the one-way setting, Zürich, London, September 20, 2026, and visible flight options. The video plays at 1×, with no opening hold and a 0.5-second final hold.
+The current video is a **9,195 ms** Google Flights run, the median of three verified takes recorded back to back (8.539, 9.195 and 11.148 s) at a 1470×1470 viewport, with TypeSafe `jev-1.13.0` and GLM 5.3 Flash through OpenCode Go. Timing starts after initial page observation and includes model calls, generated text, browser work, stale decisions, and loading waits. A fresh independent check verifies the one-way setting, Zürich, London, October 29, 2026, and visible flight options. The video plays at 1×, with no opening hold and a 0.5-second final hold.
 
-In six alternating runs with identical models and settings, both versions passed **3/3**. Median task time went from **9.450 s → 7.092 s**, a **25% reduction**; median browser protocol calls went from **1,092 → 101**. This is three repeats of one task on one browser profile, not a general reliability benchmark.
+In an earlier matched comparison, six alternating runs with identical models and settings, both versions passed **3/3**. Median task time went from **9.450 s → 7.092 s**, a **25% reduction**; median browser protocol calls went from **1,092 → 101**. This is three repeats of one task on one browser profile, not a general reliability benchmark.
 
 The same policy opened the requested Wikipedia article in **2.798 s** and passed a local hotel search/filter task in **1.896 s**. Runs, failures, source hashes, and measurement boundaries are in [performance.md](docs/performance.md).
 
@@ -163,7 +163,7 @@ node --test tests/test_interrupted_ui.cjs
 uv build
 ```
 
-Tests are offline. `uv run python scripts/check_guards.py` checks real controls in a local browser without model calls. `uv run python scripts/check_fill_focus.py` checks text entry when click or keyboard handlers change the focused field. `uv run python scripts/check_hittest.py` checks that clipped and covered controls are not offered and that a wrapped link is clicked on a visible fragment. Live examples and recording scripts make paid API calls. `scripts/record_flights.py <new-folder>` captures original browser timestamps; `scripts/render_demo.py <recording-folder>` renders that verified run at 1× and crops out the Google account strip. Credentials and raw traces stay ignored.
+Tests are offline. `uv run python scripts/check_guards.py` checks real controls in a local browser without model calls. `uv run python scripts/check_fill_focus.py` checks text entry when click or keyboard handlers change the focused field. `uv run python scripts/check_hittest.py` checks that clipped and covered controls are not offered and that a wrapped link is clicked on a visible fragment. Live examples and recording scripts make paid API calls. `scripts/record_flights.py <new-folder>` captures original browser timestamps; `scripts/render_demo.py <recording-folder>` renders that verified run at 1× and crops out the Google account strip. `scripts/summarize_recording.py <chosen-take> [<other-takes>...]` writes `docs/flights-measurement.json` from the chosen recording and lists every take. Credentials and raw traces stay ignored.
 
 `uv run python scripts/check_interrupted_actions.py` checks lost acknowledgements
 after real clicks, text input, and dropdown selection on a local fixture, without
