@@ -48,7 +48,7 @@ def check(browser, field, setup, expected):
     if expected == "popup":
         # The click opened an editor in the field's place; it receives the text instead.
         assert error is None and result == {"executed": action["id"]}, (error, result)
-        assert actual["popup"] == "replacement", actual
+        assert actual.get("popup") == "replacement", actual
         assert actual["value"] == "original", actual
         assert actual["inputs"] == 1, actual
         return
@@ -92,6 +92,10 @@ def main():
         ("click redirects focus", INPUT, "target.onclick=()=>other.focus();", "click"),
         ("click opens an editor in place", INPUT, "target.onclick=()=>{" + popup("r.y") + "};", "popup"),
         ("click opens an editor elsewhere", INPUT, "target.onclick=()=>{" + popup("r.bottom+200") + "};", "click"),
+        # Pages often move focus a few frames after the click, e.g. once a search popup renders.
+        ("click opens an editor in place later", INPUT,
+         "target.onclick=()=>setTimeout(()=>{" + popup("r.y") + "},40);", "popup"),
+        ("click redirects focus later", INPUT, "target.onclick=()=>setTimeout(()=>other.focus(),40);", "click"),
         ("select-all redirects focus", INPUT, "target.onkeydown=()=>other.focus();", "stopped"),
         ("click makes target readonly", INPUT, "target.onclick=()=>{target.readOnly=true};", "click"),
         ("click disables target", INPUT, "target.onclick=()=>{target.disabled=true};", "click"),
