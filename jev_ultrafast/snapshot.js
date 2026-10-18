@@ -125,13 +125,26 @@
     }
   }
   const text=words.join('\n').slice(0,6000), height=document.documentElement.scrollHeight;
+  // Visible, uncovered frames. Their controls are read in the frame itself; the caller maps them
+  // into this viewport. Only frame identity joins the marker; frame geometry is resolved before input.
+  const frames=[];
+  for (const f of document.querySelectorAll('iframe,frame')) {
+    if (!visible(f)) continue;
+    const r=f.getBoundingClientRect(), x=r.x+f.clientLeft, y=r.y+f.clientTop, w=f.clientWidth, h=f.clientHeight;
+    if (w<20 || h<20 || x>=innerWidth || y>=innerHeight || x+w<=0 || y+h<=0) continue;
+    const hit=[[0.5,0.5],[0.25,0.25],[0.75,0.25],[0.25,0.75],[0.75,0.75]].some(([fx,fy])=>{
+      const px=x+w*fx, py=y+h*fy;
+      return px>=0 && py>=0 && px<innerWidth && py<innerHeight && document.elementFromPoint(px,py)===f;
+    });
+    if (hit) frames.push({node:identity(f),x,y,w,h});
+  }
   // Compare meaning and identity. Geometry is always resolved and hit-tested just before input.
   const semantics=actions.map(({rect,covered,...action})=>action);
   actions.splice(0,actions.length,...actions.filter(a=>!a.covered));
   const page_key=cache.pageKey(), guards={};
   for (const a of actions) if (!(a.node in guards)) guards[a.node]=cache.guard(cache.nodes.get(a.node));
   const marker=[performance.timeOrigin,location.href,scrollX,scrollY,innerWidth,innerHeight,
-    document.title,text,semantics,page_key[6]];
+    document.title,text,semantics,page_key[6],frames.map(f=>f.node)];
   // Sample hit-tested ancestor chains instead of scanning and styling the whole DOM. This exposes
   // visible nested feeds and sidebars without site-specific selectors or model-generated coordinates.
   const scrollRegions=[], seenScrollRegions=new Set();
@@ -181,5 +194,5 @@
   retained.forEach((a,i)=>{ if (a.kind!=='scroll' && a.kind!=='wait') a.id='e'+(i+1); });
   actions.splice(0,actions.length,...retained);
   return {url:location.href,title:document.title,w:innerWidth,h:innerHeight,text,
-    scroll:{y:scrollY,height},actions,marker,page_key,guards,omitted_actions};
+    scroll:{y:scrollY,height},actions,marker,page_key,guards,omitted_actions,frames};
 })()

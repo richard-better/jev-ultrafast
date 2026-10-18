@@ -17,6 +17,14 @@ from . import tracing
 READ_STATE = Path(__file__).with_name("snapshot.js").read_text(encoding="utf-8")
 MARKER = f"(() => {{ const state={READ_STATE}; return state?.marker ?? null; }})()"
 CDP_RESPONSE_TIMEOUT = 30  # A deadline, not a delay: fast responses still return immediately.
+FRAME_LIMIT = 4
+# Map a point inside a frame to this viewport, only if the frame element itself is hit there.
+PLACE = """(([node,x,y]) => {
+  const f=window.__jevFast?.nodes.get(node);
+  if (!f?.isConnected) return null;
+  const r=f.getBoundingClientRect(), X=r.x+f.clientLeft+x, Y=r.y+f.clientTop+y;
+  return X>=0 && Y>=0 && X<innerWidth && Y<innerHeight && document.elementFromPoint(X,Y)===f ? {x:X,y:Y} : null;
+})"""
 
 class StalePage(ValueError):
     """A decision no longer refers to the observed page."""
@@ -44,6 +52,7 @@ class Browser:
                 raise RuntimeError("The required Browser Harness daemon is unavailable")
         else:
             ensure_daemon()
+        self.frames = {}
         self.target = cdp("Target.createTarget", url="about:blank", background=True)["targetId"]
         # The tab exists from here on, and no caller holds this object yet. Whatever fails
         # below -- a refused attach, a malformed URL, Ctrl-C during the readiness wait --
@@ -83,14 +92,130 @@ class Browser:
             raise StalePage("Document changed during evaluation")
         return response.get("result", {}).get("value")
 
+    def _frame(self, frame_id):
+        """A script context in a child frame: its own target when cross-site, else an isolated world."""
+        handle = self.frames.get(frame_id)
+        if handle is None:
+            # Listing targets is also what makes Chrome accept an attach to an out-of-process frame.
+            targets = cdp("Target.getTargets")["targetInfos"]
+            if any(t["targetId"] == frame_id and t["type"] == "iframe" for t in targets):
+                session = cdp("Target.attachToTarget", targetId=frame_id, flatten=True)["sessionId"]
+                handle = {"session": session, "context": None}
+            else:
+                world = self.call("Page.createIsolatedWorld", frameId=frame_id, worldName="jev")
+                handle = {"session": self.session, "context": world["executionContextId"]}
+            self.frames[frame_id] = handle
+        return handle
+
+    def _attach(self, frame_id):
+        """A visible cross-site frame gets its own target shortly after its element renders. Wait for
+        it once, briefly; a frame that never attaches is skipped without waiting again."""
+        unavailable = self.__dict__.setdefault("unavailable_frames", set())
+        deadline = time.monotonic() + (0 if frame_id in unavailable else 1.0)
+        while True:
+            try:
+                return self._frame(frame_id)
+            except RuntimeError:
+                if time.monotonic() >= deadline:
+                    unavailable.add(frame_id)
+                    raise
+                tracing.wait("frame", 0.05)
+
+    def evaluate_in(self, frame_id, expression):
+        """Read-only evaluation inside a frame. A navigated frame loses its context: stale, not failed."""
+        handle = self.frames.get(frame_id)
+        if handle is None:
+            raise StalePage("Frame is gone")
+        context = {} if handle["context"] is None else {"contextId": handle["context"]}
+        try:
+            response = cdp(
+                "Runtime.evaluate", session_id=handle["session"], _response_timeout=CDP_RESPONSE_TIMEOUT,
+                expression=expression, returnByValue=True, **context,
+            )
+        except RuntimeError as error:
+            self.frames.pop(frame_id, None)
+            raise StalePage("Frame changed") from error
+        if response.get("exceptionDetails"):
+            raise StalePage("Frame changed during evaluation")
+        return response.get("result", {}).get("value")
+
+    def _frame_id(self, node):
+        found = self.call(
+            "Runtime.evaluate", expression=f"window.__jevFast?.nodes.get({int(node)}) ?? null", objectGroup="jev-frames"
+        )["result"]
+        try:
+            if found.get("subtype") != "node":
+                return None
+            return self.call("DOM.describeNode", objectId=found["objectId"])["node"].get("frameId")
+        finally:
+            self.call("Runtime.releaseObjectGroup", objectGroup="jev-frames")
+
+    def _with_frames(self, info):
+        """Merge controls from visible frames, mapped into this viewport and hit-tested through the frame."""
+        frames, merged = [], []
+        for box in info.pop("frames", [])[:FRAME_LIMIT]:
+            try:
+                frame_id = self._frame_id(box["node"])
+                if not frame_id:
+                    continue
+                self._attach(frame_id)
+                state = self.evaluate_in(frame_id, READ_STATE)
+            except (StalePage, RuntimeError):
+                continue
+            if not state:
+                continue
+            for action in state["actions"]:
+                if action["kind"] in {"scroll", "wait"}:
+                    continue
+                r = action["rect"]
+                merged.append({
+                    **action,
+                    "frame": frame_id,
+                    "frame_node": box["node"],
+                    "rect": {**r, "x": r["x"] + box["x"], "y": r["y"] + box["y"]},
+                    "local": [r["x"] + r["w"] / 2, r["y"] + r["h"] / 2],
+                })
+            frames.append({
+                "id": frame_id, "node": box["node"], "marker": state["marker"],
+                "page_key": state["page_key"], "guards": state["guards"], "text": state["text"],
+            })
+        if merged:
+            points = [[a["frame_node"], *a["local"]] for a in merged]
+            hits = self.evaluate(f"(points => points.map(p => !!({PLACE})(p)))({json.dumps(points)})")
+            merged = [a for a, hit in zip(merged, hits or []) if hit]
+        for action in merged:
+            del action["local"]
+        controls = [a for a in info["actions"] if a["kind"] in {"scroll", "wait"}]
+        elements = [a for a in info["actions"] if a["kind"] not in {"scroll", "wait"}] + merged
+        retained = elements[: max(0, 250 - len(controls))]
+        info["omitted_actions"] = info.get("omitted_actions", 0) + len(elements) - len(retained)
+        for index, action in enumerate(retained, 1):
+            action["id"] = f"e{index}"
+        info["actions"] = retained + controls
+        info["frames"] = frames
+        if frames:
+            info["text"] = "\n".join([info["text"], *(f["text"][:3000] for f in frames)])
+        for gone in set(self.frames) - {f["id"] for f in frames}:
+            self.frames.pop(gone)
+        info["fingerprint"] = fingerprint(info)
+        return info
+
     @stage("observe")
     def observe(self, screenshot=True):
         if getattr(self, "after_input", None):
             action, self.after_input = self.after_input, None
             # This is read-only and happens after execution was logged, even if navigation interrupts it.
+            # A frame action settles in its own frame; its field and navigation live there.
+            handle = getattr(self, "frames", {}).get(action.get("frame"))
+            run = self.call
+            if handle is not None:
+                context = {} if handle["context"] is None else {"contextId": handle["context"]}
+                run = functools.partial(
+                    cdp, session_id=handle["session"], _response_timeout=CDP_RESPONSE_TIMEOUT, **context
+                )
             try:
                 with tracing.span("browser.stage", stage="settle"):
-                    self.call(
+                    run(
                         "Runtime.evaluate",
                         expression="""(action => new Promise(resolve => {
                           const field=window.__jevFast?.nodes.get(action.node);
@@ -130,14 +255,18 @@ class Browser:
                 pass
         for attempt in range(10):
             try:
-                return browser_operation(
-                    {"operation": "observe", "session": self.session, "screenshot": screenshot}
-                )
+                info = browser_operation({"operation": "observe", "session": self.session, "screenshot": screenshot})
             except StalePage:
                 if attempt == 9:
                     raise
                 # Navigation can outlive the fast action loop. Retry observations only, never the mutation.
                 tracing.wait("navigation", min(0.05 * (attempt + 1), 0.25))
+                continue
+            if not info.get("frames"):
+                info["frames"] = []
+                return info
+            with tracing.span("browser.stage", stage="frames"):
+                return self._with_frames(info)
         raise StalePage("Page did not settle")
 
     @stage("fresh")
@@ -161,12 +290,31 @@ class Browser:
             node = action["node"]
             if type(node) is not int:
                 return False
-            current = self.evaluate(
+            guard = (
                 "(() => { const c=window.__jevFast; "
                 f"return c ? [c.pageKey(),c.guard(c.nodes.get({node}))] : null; }})()"
             )
+            if action.get("frame"):
+                frame = next((f for f in page.get("frames", []) if f["id"] == action["frame"]), None)
+                if frame is None:
+                    return False
+                try:
+                    current = self.evaluate_in(action["frame"], guard)
+                except StalePage:
+                    return False
+                top = self.evaluate("(() => window.__jevFast?.pageKey() ?? null)()")
+                return current == [frame["page_key"], frame["guards"].get(str(node))] and top == page["page_key"]
+            current = self.evaluate(guard)
             return current == [page["page_key"], page["guards"].get(str(node))]
-        return self.evaluate(MARKER) == page["marker"]
+        if self.evaluate(MARKER) != page["marker"]:
+            return False
+        for frame in page.get("frames", []):
+            try:
+                if self.evaluate_in(frame["id"], MARKER) != frame["marker"]:
+                    return False
+            except StalePage:
+                return False
+        return True
 
     @stage("act")
     def act(self, action, page, text=None):
@@ -174,7 +322,13 @@ class Browser:
             raise StalePage("Page changed since this decision. Observe again.")
         if action["kind"] == "wait":
             tracing.wait("wait_action", 0.1)
-        result = browser_operation({"operation": "act", "session": self.session, "action": action, "text": text})
+        request = {"operation": "act", "session": self.session, "action": action, "text": text}
+        if action.get("frame"):
+            handle = getattr(self, "frames", {}).get(action["frame"])
+            if handle is None:
+                raise StalePage("Frame changed since this decision. Observe again.")
+            request["frame"] = {**handle, "node": action["frame_node"]}
+        result = browser_operation(request)
         self.after_input = action if action["kind"] != "wait" else None
         if self.after_input and action.get("navigation"):
             self.after_input = {**action, "source_url": page["url"], "source_document": page["marker"][0]}
@@ -182,6 +336,13 @@ class Browser:
 
     @stage("close")
     def close(self):
+        for handle in getattr(self, "frames", {}).values():
+            if handle["context"] is None:
+                try:
+                    cdp("Target.detachFromTarget", sessionId=handle["session"])
+                except RuntimeError:
+                    pass
+        self.frames = {}
         if self.target:
             cdp("Target.closeTarget", targetId=self.target)
             self.target = None
@@ -203,8 +364,24 @@ def browser_operation(request):
         timeout = 5 if method == "Page.captureScreenshot" else CDP_RESPONSE_TIMEOUT
         return cdp(method, session_id=session, _response_timeout=timeout, **params)
 
-    def evaluate(expression):
+    frame = request.get("frame")
+
+    def top_evaluate(expression):
         result = call("Runtime.evaluate", expression=expression, returnByValue=True)
+        if result.get("exceptionDetails"):
+            raise StalePage("Document changed during evaluation")
+        return result.get("result", {}).get("value")
+
+    def evaluate(expression):
+        # Element-side work runs in the action's own frame; input always goes through the page.
+        if frame:
+            context = {} if frame["context"] is None else {"contextId": frame["context"]}
+            result = cdp(
+                "Runtime.evaluate", session_id=frame["session"], _response_timeout=CDP_RESPONSE_TIMEOUT,
+                expression=expression, returnByValue=True, **context,
+            )
+        else:
+            result = call("Runtime.evaluate", expression=expression, returnByValue=True)
         if result.get("exceptionDetails"):
             if operation == "act" and request["action"]["kind"] == "select":
                 raise RuntimeError("Dropdown execution was interrupted; inspect before retrying.")
@@ -292,6 +469,12 @@ def browser_operation(request):
                 if kind == "select":
                     raise RuntimeError("Dropdown execution was not confirmed; inspect before retrying.")
                 raise StalePage("Target changed or is covered. Observe again.")
+            local_x, local_y = target["x"], target["y"]
+            if frame and kind != "select":
+                # The frame may have moved or been covered since observation. Resolve it last.
+                target = top_evaluate(f"({PLACE})({json.dumps([frame['node'], local_x, local_y])})")
+                if target is None:
+                    raise StalePage("Frame moved or is covered. Observe again.")
             with tracing.span("browser.stage", stage="input"):
                 if kind != "select":
                     x, y = target["x"], target["y"]
@@ -301,7 +484,7 @@ def browser_operation(request):
                         def text_target(claim):
                             # Claiming picks the element that will receive keys; later checks require it unchanged.
                             try:
-                                return bool(evaluate("""(([node,x,y,claim]) => {
+                                claimed = bool(evaluate("""(([node,x,y,claim]) => {
                                   const cache=window.__jevFast, e=cache?.nodes.get(node), a=document.activeElement;
                                   const usable=f=>!!(f?.isConnected && !f.matches(':disabled') &&
                                     !f.closest('[aria-disabled="true"],[inert]') &&
@@ -314,7 +497,13 @@ def browser_operation(request):
                                   // popup. It holds focus and sits under the clicked point: the same field.
                                   const hit=document.elementFromPoint(x,y);
                                   return !!(hit && (a===hit || a?.contains(hit)) && usable(a) && (cache.typing=a));
-                                })(""" + json.dumps([action["node"], x, y, claim]) + ")"))
+                                })(""" + json.dumps([action["node"], local_x, local_y, claim]) + ")"))
+                                if claimed and frame:
+                                    # Keys go to the page's focused frame, so the page must focus this one.
+                                    claimed = top_evaluate(
+                                        f"window.__jevFast?.nodes.get({frame['node']})===document.activeElement"
+                                    )
+                                return bool(claimed)
                             except StalePage:
                                 return False
 

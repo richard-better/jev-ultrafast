@@ -130,7 +130,7 @@ In six alternating runs with identical models and settings, both versions passed
 
 The same policy opened the requested Wikipedia article in **2.798 s** and passed a local hotel search/filter task in **1.896 s**. Runs, failures, source hashes, and measurement boundaries are in [performance.md](docs/performance.md).
 
-A `DONE` choice still requires independent outcome verification. The DOM reader handles common HTML and ARIA controls and sampled visible scroll regions, not the full accessible-name specification. Shadow roots, frames, canvas, uploads, pop-up tabs, obscured scroll containers, and arbitrary keyboard widgets remain outside this MVP. Owned tabs share the existing Chrome profile.
+A `DONE` choice still requires independent outcome verification. The DOM reader handles common HTML and ARIA controls and sampled visible scroll regions, not the full accessible-name specification. Controls in up to four visible first-level iframes, including cross-site frames such as consent managers, are read in their own frame and offered when the frame is hit where they sit; scrolling inside frames and nested frames are not supported. Shadow roots, canvas, uploads, pop-up tabs, obscured scroll containers, and arbitrary keyboard widgets remain outside this MVP. Owned tabs share the existing Chrome profile.
 
 If browser execution is interrupted, the action may already have taken effect even
 though its reply was lost. The agent stops that run, records `execution: "unknown"`
@@ -167,7 +167,9 @@ Tests are offline. `uv run python scripts/check_guards.py` checks real controls 
 after real clicks, text input, and dropdown selection on a local fixture, without
 model calls. Each case checks the actual DOM event count before and after a retry.
 
-`uv run python scripts/check_consent.py` serves consent banners from two local origins (inline, blocking overlay, below the fold, same- and cross-origin iframes, open and closed shadow roots) and checks that each banner's "Reject all" is offered, dismisses it, and leaves the page usable, without model calls. Shapes that do not work yet are listed as known gaps. `--live` also runs the real agent on each shape with paid model calls.
+`uv run python scripts/check_consent.py` serves consent banners from local origins (inline, blocking overlay, below the fold, same-origin, cross-origin and cross-site iframes, open and closed shadow roots) and checks that each banner's "Reject all" is offered, dismisses it, and leaves the page usable, without model calls. Shapes that do not work yet are listed as known gaps. `--live` also runs the real agent on each shape with paid model calls.
+
+`uv run python scripts/check_frames.py` checks controls inside same-process and cross-site iframes without model calls: input reaches the frame's elements, a covered frame is never clicked through, and a frame that changed or navigated after observation is refused before input.
 
 `uv run python scripts/check_selects.py` checks native dropdown identity and freshness in a local browser, including duplicate values and stale options, without model calls.
 

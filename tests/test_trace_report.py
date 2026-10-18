@@ -51,7 +51,8 @@ def test_overlapping_independent_spans_are_marked_concurrent():
 
 
 @pytest.mark.parametrize(("stage", "expected"), [
-    ("snapshot", "observe"), ("settle", "observe"), ("input", "act"), ("target", "act"), ("start", "browser"),
+    ("snapshot", "observe"), ("settle", "observe"), ("frames", "observe"),
+    ("input", "act"), ("target", "act"), ("start", "browser"),
     ("fresh", "browser"),
 ])
 def test_browser_stages_map_to_their_category(stage, expected):

@@ -22,8 +22,6 @@ from jev_ultrafast.browser import Browser
 from jev_ultrafast.demo import load_environment
 
 KNOWN_GAPS = {
-    "iframe-same-origin": "snapshot.js reads only the top document, so frame controls are never offered",
-    "iframe-cross-origin": "snapshot.js reads only the top document, so frame controls are never offered",
     "shadow-open": "snapshot.js does not descend into shadow roots",
     "shadow-closed": "closed shadow roots are unreachable from page scripts",
 }
@@ -75,7 +73,12 @@ def pages(frame_origin):
         "overlay": SHOP + f'<div class="overlay"><div class="dialog">{BUTTONS}</div></div>',
         "below-fold": below_fold,
         "iframe-same-origin": SHOP + '<iframe class="consent" src="/frame"></iframe>' + LISTEN,
+        # Another port is another origin in the same process; localhost is another site, so Chrome runs
+        # that frame as its own target, like a third-party consent manager.
         "iframe-cross-origin": SHOP + f'<iframe class="consent" src="{frame_origin}/frame"></iframe>' + LISTEN,
+        "iframe-cross-site": SHOP
+        + f'<iframe class="consent" src="{frame_origin.replace("127.0.0.1", "localhost")}/frame"></iframe>'
+        + LISTEN,
         "shadow-open": SHOP + shadow("open"),
         "shadow-closed": SHOP + shadow("closed"),
     }
