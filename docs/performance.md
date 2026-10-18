@@ -20,6 +20,21 @@ When the route and date are known up front, the task needs no agent. Google Flig
 
 The clocks differ: this one starts at navigation and includes loading the page, while the agent's starts after its initial page has loaded. The same content checks pass (one way, Zürich, London, the date and year, and flight results on that date); the path check does not apply, because the deep link keeps its `/travel/flights?q=` address. The agent's value is in goals that need reading and choosing on the page, or sites whose state cannot be put in a URL; this task is a benchmark of driving the page, not of that.
 
+## Cheapest flight to booking options
+
+A task that a URL cannot answer up front: *find the cheapest one-way flight from Zurich to London on October 29, 2026, for one adult in economy, select it, and stop on the page that lists where it can be booked; do not continue to any booking site.* The goal names the outcome, never the controls. Both arms use the same loop, 1470×1470 viewport, TypeSafe `jev-1.13.0` and GLM 5.3 Flash; the only difference is whether the Google Flights [URL map](../examples/maps/google-flights.json) is loaded.
+
+| | Takes (all verified) | Video (median) | Jev requests | Actions | Text calls |
+| --- | --- | ---: | ---: | ---: | ---: |
+| Without a URL map | 11.104, 11.396, 13.640 s | [11.396 s](cheapest-demo.mp4) | 21 | 14 | 2 |
+| With the URL map | 5.523, 6.674, 6.789 s | [6.674 s](cheapest-map-demo.mp4) | 10 | 5 | 1 |
+
+Without the map, Jev fills origin, destination, one way and the date, searches, sorts by cheapest, opens the first flight's details and selects it. With it, Jev chooses the map's one-way entry, the text model fills its parameters (Zurich, London, 2026-10-29, economy, 1 adult), code builds the results URL, and Jev sorts, opens and selects the same way. In the map video Jev first opens one flight's details before sorting, then sorts and opens the cheapest; the detour stays in the video. The first 2.8 s of the map run are the decision to take the shortcut and the text model filling it.
+
+Independent verification checks that the final page is Google's booking page for Zurich to a London airport on the date, one way, with booking options shown; that no "Continue to book" action ran; and that the selected flight is a flight listed at the lowest price, read from a fresh results page in a separate tab after the run. Flights are compared by airports and times, not by price: Google listed the cheapest easyJet fare at HUF 23,279 on the results page and HUF 23,299 on its booking page. Measurements: [without the map](cheapest-measurement.json), [with the map](cheapest-map-measurement.json).
+
+Earlier benchmark runs of the same task, five per arm interleaved, all passed with medians of 12.3 s without the map and 6.7 s with it; the slowest run in each arm was one 12-15 s text-model request.
+
 The previous video, a 7.073-second run at 1120×780 with Mercury through OpenRouter and a 178 ms median Jev latency, is described in the [earlier performance report](https://github.com/browser-use/jev-ultrafast/blob/1231850a0bf1a0c0341fe408ef1668dbbfdfac46/docs/performance.md). The matched comparison below predates the current recording and keeps its original settings.
 
 ## Matched runtime comparison

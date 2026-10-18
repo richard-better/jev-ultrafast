@@ -152,6 +152,14 @@ Each map entry is offered as its own operation, like `OPEN_GOOGLE_FLIGHTS_ONE_WA
 
 `uv run python scripts/check_url_map.py` runs a Google Flights entry through the real browser path with a scripted choice and no model calls.
 
+The goal in these two videos cannot be answered by a URL alone: *find the cheapest one-way flight from Zurich to London on October 29, 2026, select it, and stop on the page that lists where it can be booked.* The same loop and models run both; only the map differs. Without it, Jev fills the search form, sorts by price, opens the cheapest flight and selects it in **11.4 s**. With the Google Flights map it opens the results directly and does the rest in **6.7 s**. Both are median takes of three, independently verified as the cheapest listed flight, stopped before any booking site.
+
+| Without a URL map, 11.4 s | With the Google Flights URL map, 6.7 s |
+| --- | --- |
+| <a href="docs/cheapest-demo.mp4"><img src="docs/cheapest-demo.gif" alt="Jev fills the Google Flights search, sorts by cheapest, selects the cheapest flight and stops at booking options" /></a> | <a href="docs/cheapest-map-demo.mp4"><img src="docs/cheapest-map-demo.gif" alt="Jev opens Google Flights results through a URL map, sorts by cheapest, selects the cheapest flight and stops at booking options" /></a> |
+
+Details, every take and the verification are in the [performance report](docs/performance.md#cheapest-flight-to-booking-options).
+
 ## Profile a run
 
 Set `JEV_TRACE_DIR` to record OpenTelemetry spans for every run: one OTLP JSON lines file per run, with model requests (`gen_ai.chat`), browser stages (`browser.stage`), waits and commands. Spans hold timings, operations and outcomes, never page text, typed values, prompts or credentials. `scripts/measure_flights.py` always writes a trace next to its state.
@@ -173,7 +181,7 @@ node --test tests/test_interrupted_ui.cjs
 uv build
 ```
 
-Tests are offline. `uv run python scripts/check_guards.py` checks real controls in a local browser without model calls. `uv run python scripts/check_fill_focus.py` checks text entry when click or keyboard handlers change the focused field. `uv run python scripts/check_hittest.py` checks that clipped and covered controls are not offered and that a wrapped link is clicked on a visible fragment. Live examples and recording scripts make paid API calls. `scripts/record_flights.py <new-folder>` captures original browser timestamps; `scripts/render_demo.py <recording-folder>` renders that verified run at 1× and crops out the Google account strip. `scripts/record_flights_url.py <new-folder>` records the same task opened by a deep link, with no model calls, and `render_demo.py` renders it to `docs/url-demo.*`. `scripts/summarize_recording.py <chosen-take> [<other-takes>...]` writes `docs/flights-measurement.json` from the chosen recording and lists every take. Credentials and raw traces stay ignored.
+Tests are offline. `uv run python scripts/check_guards.py` checks real controls in a local browser without model calls. `uv run python scripts/check_fill_focus.py` checks text entry when click or keyboard handlers change the focused field. `uv run python scripts/check_hittest.py` checks that clipped and covered controls are not offered and that a wrapped link is clicked on a visible fragment. Live examples and recording scripts make paid API calls. `scripts/record_flights.py [--task cheapest] <new-folder>` captures original browser timestamps (with `JEV_URL_MAP` set, the run can use the map); `scripts/render_demo.py <recording-folder>` renders that verified run at 1× and crops out the Google account strip. `scripts/record_flights_url.py <new-folder>` records the same task opened by a deep link, with no model calls, and `render_demo.py` renders it to `docs/url-demo.*`. `scripts/summarize_recording.py <chosen-take> [<other-takes>...]` writes `docs/flights-measurement.json` from the chosen recording and lists every take. Credentials and raw traces stay ignored.
 
 `uv run python scripts/check_interrupted_actions.py` checks lost acknowledgements
 after real clicks, text input, and dropdown selection on a local fixture, without

@@ -1,0 +1,303 @@
+{
+  "elapsed_ms": 11396,
+  "decision_requests": 21,
+  "decision_median_ms": 302,
+  "decision_total_ms": 6503,
+  "browser_actions": 14,
+  "wait_actions": 1,
+  "models": {
+    "decision": [
+      "jev-1.13.0"
+    ],
+    "text": [
+      "glm-5.3-flash"
+    ]
+  },
+  "viewport": {
+    "width": 1470,
+    "height": 1470
+  },
+  "text_calls": [
+    {
+      "model": "glm-5.3-flash",
+      "latency_ms": 1268,
+      "usage": {
+        "prompt_tokens": 511,
+        "completion_tokens": 9,
+        "total_tokens": 520,
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0,
+          "cache_write_tokens": 0
+        },
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        }
+      },
+      "field": "Where from?",
+      "value": "Zurich"
+    },
+    {
+      "model": "glm-5.3-flash",
+      "latency_ms": 1426,
+      "usage": {
+        "prompt_tokens": 540,
+        "completion_tokens": 8,
+        "total_tokens": 548,
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0,
+          "cache_write_tokens": 0
+        },
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        }
+      },
+      "field": "Where to? ",
+      "value": "London"
+    }
+  ],
+  "verification": {
+    "passed": true,
+    "checks": {
+      "booking_page": true,
+      "route": true,
+      "date": true,
+      "one_way": true,
+      "booking_options": true,
+      "not_booked": true,
+      "cheapest": true
+    },
+    "selected_flight": [
+      [
+        "Zurich Airport",
+        "11:20 AM",
+        "London Gatwick Airport",
+        "12:05 PM"
+      ]
+    ],
+    "cheapest_listed_flights": [
+      [
+        "Zurich Airport",
+        "11:20 AM",
+        "London Gatwick Airport",
+        "12:05 PM"
+      ]
+    ],
+    "selected_price": 23299,
+    "lowest_listed_price": 23279,
+    "booking_offers": [
+      "Continue to book with easyJet airline for 23299 Hungarian forints (Equivalent to 60 Swiss francs on easyJet)"
+    ]
+  },
+  "source_hashes": {
+    "tracing.py": "782ba1ed17093c33b143c81a2bf0534414ea496c7aec898e7f36774b46bdb1e8",
+    "questions.py": "3417b2c41e62981648fdb815a4ba564a469763096ebb79b6edd025568cdfd162",
+    "__init__.py": "60f025b8d24465e2c0f7a3547d43b8020fd8843de7b6cb3f892ef63f5548cf63",
+    "flight_date.py": "104feafc9d4e8e89e413e4d3a123cf0e608c448a799703553841917e58002e87",
+    "model.py": "c2544c765698db739052127adbecbe7202803f63618027141216980f66fb7b06",
+    "browser.py": "8a12af683cbd3302f358b30ca778a04ab05c56f6fa9173f5546adce19eb27e20",
+    "snapshot.js": "f5b8198c0aa6f7d3b7ec95711f8eee81614329834b90c52b887d90db31afec30",
+    "agent.py": "6d05e47ca8977620a138aaa84597084108d471a2ba628331602d56a865212de7",
+    "demo.py": "c08826035662c4a41a69fdef8f717b129693c0362d45d00198733ef4c2fd3ab2",
+    "trace_report.py": "74d0077bba9705e5a94db3cb6ea460d7544f7481f015f06c40db732288b32612",
+    "url_map.py": "325b2d4cbd6603218e370edd8a4edcba4d3eca0d1b124ea09f82380b504b75c0"
+  },
+  "tokens": {
+    "input_tokens": 136131,
+    "output_tokens": 8080
+  },
+  "task": "Find the cheapest one-way flight from Zurich to London on October 29, 2026, for one adult in economy. Select it and stop on the page that lists where it can be booked. Do not continue to any booking site and do not book.",
+  "url_map": null,
+  "timing": "First prediction after initial homepage observation through final DONE; setup and independent final verification excluded.",
+  "video": {
+    "source_frames": 154,
+    "speed": 1,
+    "intro_hold_ms": 0,
+    "end_hold_ms": 500,
+    "crop": "Top 64 px account/navigation strip removed from every frame."
+  },
+  "selection": "The median-time verified take of the session.",
+  "takes": [
+    {
+      "take": "nomap2",
+      "elapsed_ms": 11396,
+      "verified": true,
+      "chosen": true
+    },
+    {
+      "take": "nomap1",
+      "elapsed_ms": 13640,
+      "verified": true,
+      "chosen": false
+    },
+    {
+      "take": "nomap3",
+      "elapsed_ms": 11104,
+      "verified": true,
+      "chosen": false
+    }
+  ],
+  "actions": [
+    {
+      "operation": "TYPE_TEXT",
+      "target": "13",
+      "action": "Where from?",
+      "kind": "fill",
+      "text": "Zurich",
+      "executed_ms": 1882,
+      "elapsed_ms": 1991,
+      "latency_ms": 446,
+      "text_latency_ms": 1268
+    },
+    {
+      "operation": "CLICK",
+      "target": "3",
+      "action": "Zürich, Switzerland",
+      "kind": "click",
+      "text": null,
+      "executed_ms": 2326,
+      "elapsed_ms": 2408,
+      "latency_ms": 314,
+      "text_latency_ms": 0
+    },
+    {
+      "operation": "TYPE_TEXT",
+      "target": "14",
+      "action": "Where to? ",
+      "kind": "fill",
+      "text": "London",
+      "executed_ms": 4573,
+      "elapsed_ms": 4711,
+      "latency_ms": 293,
+      "text_latency_ms": 1426
+    },
+    {
+      "operation": "CLICK",
+      "target": "3",
+      "action": "London, United Kingdom",
+      "kind": "click",
+      "text": null,
+      "executed_ms": 5016,
+      "elapsed_ms": 5074,
+      "latency_ms": 272,
+      "text_latency_ms": 0
+    },
+    {
+      "operation": "CLICK",
+      "target": "10",
+      "action": "Change ticket type. Round trip",
+      "kind": "click",
+      "text": null,
+      "executed_ms": 5757,
+      "elapsed_ms": 5794,
+      "latency_ms": 356,
+      "text_latency_ms": 0
+    },
+    {
+      "operation": "CLICK",
+      "target": "12",
+      "action": "One way",
+      "kind": "click",
+      "text": null,
+      "executed_ms": 6121,
+      "elapsed_ms": 6157,
+      "latency_ms": 297,
+      "text_latency_ms": 0
+    },
+    {
+      "operation": "CLICK",
+      "target": "16",
+      "action": "Open Departure",
+      "kind": "click",
+      "text": null,
+      "executed_ms": 6729,
+      "elapsed_ms": 6794,
+      "latency_ms": 267,
+      "text_latency_ms": 0
+    },
+    {
+      "operation": "CLICK",
+      "target": "33",
+      "action": "Thursday, October 29, 2026",
+      "kind": "click",
+      "text": null,
+      "executed_ms": 7124,
+      "elapsed_ms": 7191,
+      "latency_ms": 268,
+      "text_latency_ms": 0
+    },
+    {
+      "operation": "CLICK",
+      "target": "38",
+      "action": "Done. Search for one-way flights, departing on October 29, 2026",
+      "kind": "click",
+      "text": null,
+      "executed_ms": 7543,
+      "elapsed_ms": 7608,
+      "latency_ms": 302,
+      "text_latency_ms": 0
+    },
+    {
+      "operation": "CLICK",
+      "target": "17",
+      "action": "Search",
+      "kind": "click",
+      "text": null,
+      "executed_ms": 8264,
+      "elapsed_ms": 8366,
+      "latency_ms": 283,
+      "text_latency_ms": 0
+    },
+    {
+      "operation": "WAIT",
+      "target": null,
+      "action": "Wait for the page to update",
+      "kind": "wait",
+      "text": null,
+      "executed_ms": 8750,
+      "elapsed_ms": 8758,
+      "latency_ms": 263,
+      "text_latency_ms": 0
+    },
+    {
+      "operation": "CLICK",
+      "target": "28",
+      "action": "Cheapest from   23279 Hungarian forints Learn more about ranking Looking for the lowest fares?   These additional budget picks help you save but may involve trade-offs, such as flying back to a different airport in the same city you departed from, self-transferring luggage, or booking via a third-party site.   Learn more about how flights are ranked",
+      "kind": "click",
+      "text": null,
+      "executed_ms": 9593,
+      "elapsed_ms": 9673,
+      "latency_ms": 320,
+      "text_latency_ms": 0
+    },
+    {
+      "operation": "CLICK",
+      "target": "32",
+      "action": "Flight details. Leaves Zurich Airport at 11:20 AM on Thursday, October 29 and arrives at London Gatwick Airport at 12:05 PM on Thursday, October 29.",
+      "kind": "click",
+      "text": null,
+      "executed_ms": 10093,
+      "elapsed_ms": 10149,
+      "latency_ms": 372,
+      "text_latency_ms": 0
+    },
+    {
+      "operation": "CLICK",
+      "target": "31",
+      "action": "Select flight",
+      "kind": "click",
+      "text": null,
+      "executed_ms": 10560,
+      "elapsed_ms": 10618,
+      "latency_ms": 316,
+      "text_latency_ms": 0
+    }
+  ]
+}
