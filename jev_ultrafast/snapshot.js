@@ -6,14 +6,28 @@
     const id=cache.ids.get(e); cache.nodes.set(id,e); return id;
   };
   for (const [id,e] of cache.nodes) if (!e.isConnected) cache.nodes.delete(id);
+  // Open shadow roots are part of the page: consent managers and design systems render into them.
+  // Closed roots are unreachable from page scripts.
+  const roots=[document];
+  for (let i=0;i<roots.length;i++) for (const e of roots[i].querySelectorAll('*')) if (e.shadowRoot) roots.push(e.shadowRoot);
+  // The deepest element at a point, through open shadow roots.
+  cache.hit=(x,y)=>{
+    let hit=document.elementFromPoint(x,y);
+    while (hit?.shadowRoot) { const inner=hit.shadowRoot.elementFromPoint(x,y); if (!inner || inner===hit) break; hit=inner; }
+    return hit;
+  };
+  // Containment across shadow boundaries: a host contains its shadow content.
+  cache.within=(e,n)=>{ for (; n; n=n.parentNode || n.host) if (n===e) return true; return false; };
+  cache.active=()=>{ let a=document.activeElement; while (a?.shadowRoot?.activeElement) a=a.shadowRoot.activeElement; return a; };
   const safe = e => !['password','file','hidden'].includes(e.type);
   const visible = e => !e.closest('[aria-hidden="true"],[inert]') &&
     e.checkVisibility({checkOpacity:true,checkVisibilityCSS:true});
   const name = (e,seen=new Set()) => {
     if (!e || seen.has(e)) return '';
     seen.add(e);
+    const root=e.getRootNode();
     const referenced=(e.getAttribute('aria-labelledby')||'').split(/\s+/)
-      .map(id=>name(document.getElementById(id),seen)).filter(Boolean).join(' ');
+      .map(id=>name((root.getElementById ? root : document).getElementById(id),seen)).filter(Boolean).join(' ');
     return referenced || e.getAttribute('aria-label') ||
       [...(e.labels||[])].map(l=>name(l,seen)).filter(Boolean).join(' ') ||
       (e.tagName==='INPUT' && ['button','submit','reset'].includes(e.type) ? e.value : '') || e.getAttribute('alt') ||
@@ -58,7 +72,7 @@
         (e.tagName==='INPUT' && ['text','search','email','url','tel','number'].includes(e.type)));
   };
   cache.pageKey=()=>[performance.timeOrigin,location.href,scrollX,scrollY,innerWidth,innerHeight,
-    [...document.querySelectorAll('input,textarea,select')].filter(safe)
+    roots.flatMap(root=>[...root.querySelectorAll('input,textarea,select')]).filter(safe)
       .map(e=>[identity(e),e.value,e.checked,e.type==='checkbox'&&e.indeterminate,e.selectedIndex,e.disabled,e.readOnly])];
   const innerTextGetter=Object.getOwnPropertyDescriptor(HTMLElement.prototype,'innerText').get;
   cache.guard=e=>{
@@ -74,7 +88,7 @@
         [identity(o),o.value,o.label,o.selected,o.disabled,!!o.closest('optgroup[disabled]')])] : null];
   };
   const actions=[];
-  for (const e of document.querySelectorAll(selector)) {
+  for (const e of roots.flatMap(root=>[...root.querySelectorAll(selector)])) {
     if (!safe(e) || !visible(e) || e.matches(':disabled') || e.closest('[aria-disabled="true"]')) continue;
     const r=e.getBoundingClientRect(), x=r.x+r.width/2, y=r.y+r.height/2, rname=role(e);
     if (!rname || r.width<=0 || r.height<=0 || x<0 || y<0 || x>=innerWidth || y>=innerHeight) continue;
@@ -87,10 +101,10 @@
     // the same fallback, so what is offered is what can be hit. A covered control is dropped
     // from the offer below, after the marker is built: occlusion is geometry, and the marker
     // deliberately compares meaning and identity only.
-    const covered=!e.contains(document.elementFromPoint(x,y)) &&
+    const covered=!cache.within(e,cache.hit(x,y)) &&
       ![...e.getClientRects()].some(q => { const fx=q.x+q.width/2, fy=q.y+q.height/2;
         return q.width>0 && q.height>0 && fx>=0 && fy>=0 && fx<innerWidth && fy<innerHeight &&
-          e.contains(document.elementFromPoint(fx,fy)); });
+          cache.within(e,cache.hit(fx,fy)); });
     if (rname==='gridcell' && e.querySelector('button,[role="button"]')) continue;
     const base={node:identity(e),role:rname,label:name(e)||rname,
       rect:{x:r.x,y:r.y,w:r.width,h:r.height}};
@@ -114,14 +128,16 @@
       if (editable) actions.push({...base,kind:'click',value,label:'Open '+base.label});
     }
   }
-  const words=[], walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);
-  const range=document.createRange(); let node,length=0;
-  while ((node=walker.nextNode()) && length<6000) {
-    const value=node.textContent.trim(), parent=node.parentElement;
-    if (!value || !parent || parent.closest('script,style,noscript,template') || !visible(parent)) continue;
-    range.selectNodeContents(node); const r=range.getBoundingClientRect();
-    if (r.width>0 && r.height>0 && r.bottom>0 && r.top<innerHeight && r.right>0 && r.left<innerWidth) {
-      words.push(value); length+=value.length;
+  const words=[], range=document.createRange(); let node,length=0;
+  for (const root of [document.body,...roots.slice(1)]) {
+    const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);
+    while ((node=walker.nextNode()) && length<6000) {
+      const value=node.textContent.trim(), parent=node.parentElement;
+      if (!value || !parent || parent.closest('script,style,noscript,template') || !visible(parent)) continue;
+      range.selectNodeContents(node); const r=range.getBoundingClientRect();
+      if (r.width>0 && r.height>0 && r.bottom>0 && r.top<innerHeight && r.right>0 && r.left<innerWidth) {
+        words.push(value); length+=value.length;
+      }
     }
   }
   const text=words.join('\n').slice(0,6000), height=document.documentElement.scrollHeight;
