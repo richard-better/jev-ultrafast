@@ -430,8 +430,12 @@ def browser_operation(request):
                     }
                     return null;
                   };
-                  for (const fx of [0.1,0.3,0.5,0.7,0.9]) for (const fy of [0.2,0.5,0.8]) {
-                    const x=innerWidth*fx, y=innerHeight*fy;
+                  // Look inside the region's own visible box, so any viewport size finds a point on it.
+                  const left=Math.max(0,r.left), top=Math.max(0,r.top);
+                  const width=Math.min(innerWidth,r.right)-left, height=Math.min(innerHeight,r.bottom)-top;
+                  if (width<=0 || height<=0) return null;
+                  for (const fx of [0.5,0.1,0.3,0.7,0.9]) for (const fy of [0.5,0.2,0.8]) {
+                    const x=left+width*fx, y=top+height*fy;
                     const hit=document.elementFromPoint(x,y);
                     if (hit && !hit.closest('input,select,textarea') && nearestScrollable(hit)===e)
                       return {x,y};

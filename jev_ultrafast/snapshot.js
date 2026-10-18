@@ -164,24 +164,32 @@
   // Sample hit-tested ancestor chains instead of scanning and styling the whole DOM. This exposes
   // visible nested feeds and sidebars without site-specific selectors or model-generated coordinates.
   const scrollRegions=[], seenScrollRegions=new Set();
-  for (const fx of [0.1,0.3,0.5,0.7,0.9]) for (const fy of [0.2,0.5,0.8]) {
-    const hit=document.elementFromPoint(innerWidth*fx,innerHeight*fy);
+  // A fixed pixel spacing, not fractions of the viewport: a taller viewport must not skip a short feed.
+  // Each element's nearest scrollable ancestor is remembered, so extra samples reuse earlier walks.
+  const nearest=new Map();
+  const nearestScrollable=hit=>{
+    const path=[]; let found=null;
+    for (let e=hit; e && e!==document.body && e!==document.documentElement; e=e.parentElement) {
+      if (nearest.has(e)) { found=nearest.get(e); break; }
+      path.push(e);
+      if (/(auto|scroll)/.test(getComputedStyle(e).overflowY) && e.scrollHeight>e.clientHeight+2) { found=e; break; }
+    }
+    for (const e of path) nearest.set(e,found);
+    return found;
+  };
+  const spacing=150;
+  for (let y=spacing/2; y<innerHeight; y+=spacing) for (let x=spacing/2; x<innerWidth; x+=spacing) {
+    const hit=document.elementFromPoint(x,y);
     if (!hit || hit.closest('input,select,textarea')) continue;
-    let e=hit;
-    while (e && e!==document.body && e!==document.documentElement) {
-      const style=getComputedStyle(e);
-      if (/(auto|scroll)/.test(style.overflowY) && e.scrollHeight>e.clientHeight+2) {
-        const r=e.getBoundingClientRect();
-        const visibleWidth=Math.max(0,Math.min(innerWidth,r.right)-Math.max(0,r.left));
-        const visibleHeight=Math.max(0,Math.min(innerHeight,r.bottom)-Math.max(0,r.top));
-        if (!seenScrollRegions.has(e) && visibleWidth>20 && visibleHeight>20 && visible(e)) {
-          seenScrollRegions.add(e);
-          scrollRegions.push({e,r,score:visibleWidth*visibleHeight});
-        }
-        // Only the nearest scrollable ancestor can consume a wheel event at this point.
-        break;
-      }
-      e=e.parentElement;
+    // Only the nearest scrollable ancestor can consume a wheel event at this point.
+    const e=nearestScrollable(hit);
+    if (!e || seenScrollRegions.has(e)) continue;
+    const r=e.getBoundingClientRect();
+    const visibleWidth=Math.max(0,Math.min(innerWidth,r.right)-Math.max(0,r.left));
+    const visibleHeight=Math.max(0,Math.min(innerHeight,r.bottom)-Math.max(0,r.top));
+    if (visibleWidth>20 && visibleHeight>20 && visible(e)) {
+      seenScrollRegions.add(e);
+      scrollRegions.push({e,r,score:visibleWidth*visibleHeight});
     }
   }
   scrollRegions.sort((a,b)=>b.score-a.score).slice(0,4).forEach(({e,r},i)=>{
