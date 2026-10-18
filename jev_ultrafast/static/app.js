@@ -98,6 +98,8 @@ function render() {
     controls();
     return;
   }
+  // Overlay targets are placed in percent of the page, so the frame must keep the page's shape.
+  if (page.w && page.h) $("viewport").style.aspectRatio = `${page.w}/${page.h}`;
   const hasScreenshot = Boolean(page.screenshot);
   $("empty").hidden = hasScreenshot;
   $("screenshot").hidden = !hasScreenshot;

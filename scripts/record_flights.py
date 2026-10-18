@@ -13,6 +13,7 @@ from browser_harness.helpers import drain_events
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from examples.flights import GOALS, URL, verify  # noqa: E402
 from jev_ultrafast import Agent  # noqa: E402
+from jev_ultrafast.browser import viewport  # noqa: E402
 
 folder = Path(sys.argv[1] if len(sys.argv) > 1 else "artifacts/flights/recorded")
 folder.mkdir(parents=True, exist_ok=False)
@@ -48,7 +49,10 @@ def capture():
         errors.append(str(e))
 
 
-agent.browser.call("Page.startScreencast", format="jpeg", quality=80, maxWidth=1120, maxHeight=780, everyNthFrame=2)
+width, height = viewport()
+agent.browser.call(
+    "Page.startScreencast", format="jpeg", quality=80, maxWidth=width, maxHeight=height, everyNthFrame=2
+)
 worker = threading.Thread(target=capture, daemon=True)
 worker.start()
 # The first prediction starts the run timer; this anchors video timestamps to it.

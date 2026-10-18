@@ -12,6 +12,7 @@ function inspector() {
       if (!nodes.has(id)) {
         const children = new Map();
         nodes.set(id, {
+          style: {},
           addEventListener() {},
           querySelector: selector => children.get(selector) ?? children.set(selector, {}).get(selector),
         });
@@ -43,6 +44,7 @@ test('an interrupted action remains stopped after the inspector refreshes its st
   assert.match(nodes.get('history').innerHTML, /Execution unconfirmed/);
   assert.doesNotMatch(nodes.get('history').innerHTML, /No change observed/);
   assert.equal(nodes.get('empty').querySelector('h2').textContent, 'Live preview unavailable.');
+  assert.equal(nodes.get('viewport').style.aspectRatio, '1120/780');
 });
 
 test('a failed reset reports its own error without attributing the old interruption to it', async () => {

@@ -19,6 +19,21 @@ assert all(h.get("execution") != "unknown" for h in state["history"]), "Cannot r
 frames = [(0, Image.open(source / "frames/000000.jpg").convert("RGB"))]
 frames += sorted((int(p.stem), Image.open(p).convert("RGB")) for p in (source / "screencast").glob("*.jpg"))
 end = state["elapsed_ms"]
+# The panel keeps a fixed width and grows with the recorded viewport's height. The top 64 CSS
+# pixels hold Google account controls and are cropped out.
+view_width, view_height = state["page"]["w"], state["page"]["h"]
+panel_width = 1120
+panel_height = round((view_height - 64) * panel_width / view_width) // 2 * 2  # H.264 needs even sizes.
+panel_bottom = 226 + panel_height + 1
+canvas_height = panel_bottom + 57
+
+
+def browser_view(image):
+    scale = image.width / view_width
+    view = image.crop((0, round(64 * scale), image.width, round(view_height * scale)))
+    return view if view.size == (panel_width, panel_height) else view.resize((panel_width, panel_height), Image.LANCZOS)
+
+
 folder = source / "video-frames"
 folder.mkdir(parents=True, exist_ok=False)
 font_path = "/System/Library/Fonts/Supplemental/Arial.ttf"
@@ -44,7 +59,7 @@ steps = [
 for i in range(round((end + 500) * 30 / 1000)):
     t = min(end, round(i * 1000 / 30))
     screenshot = next(im for ts, im in reversed(frames) if ts <= t)
-    canvas = Image.new("RGB", (1536, 1000), "#f3f4ec")
+    canvas = Image.new("RGB", (1536, canvas_height), "#f3f4ec")
     d = ImageDraw.Draw(canvas)
     d.text((36, 26), "browser use", font=font(23, True), fill=ink)
     d.text((186, 27), "×  TypeSafe", font=font(22), fill=muted)
@@ -52,12 +67,12 @@ for i in range(round((end + 500) * 30 / 1000)):
     d.text((1310, 32), "REAL WEB  ·  1× SPEED", font=font(14, True), fill=green)
     d.text((36, 80), f"Zürich → London. In {end / 1000:.1f} seconds.", font=font(43, True), fill=ink)
     d.text((38, 139), "One goal. Dynamic elements. LLM-generated text.", font=font(20), fill=muted)
-    d.rounded_rectangle((35, 191, 1157, 943), radius=14, fill="#202124")
+    d.rounded_rectangle((35, 191, 1157, panel_bottom), radius=14, fill="#202124")
     for j, c in enumerate(["#de8278", "#d6bd6e", "#8dbd8a"]):
         d.ellipse((54 + j * 19, 205, 63 + j * 19, 214), fill=c)
     d.text((145, 201), "google.com/travel/flights", font=mono(13), fill="#d4d6d5")
     # Omit Google account controls in every frame. No content from the task area is redrawn.
-    canvas.paste(screenshot.crop((0, 64, 1120, 780)), (36, 226))
+    canvas.paste(browser_view(screenshot), (36, 226))
     d.text((1192, 206), "JEV ULTRAFAST", font=font(16, True), fill=green)
     d.text((1189, 242), f"{t / 1000:05.2f}", font=mono(52), fill=ink)
     d.text((1193, 307), "SECONDS ELAPSED", font=font(13, True), fill=muted)
@@ -86,16 +101,16 @@ for i in range(round((end + 500) * 30 / 1000)):
     latency = f"{statistics.median(latencies):.0f} ms" if latencies else "—"
     d.text((1194, 835), latency, font=mono(30), fill=ink)
     d.text((1194, 878), "median decision latency", font=font(16), fill=muted)
-    d.line((37, 960, 1498, 960), fill="#d3d9cc", width=2)
-    d.line((37, 960, 37 + (1498 - 37) * t / end, 960), fill=green, width=3)
+    d.line((37, canvas_height - 40, 1498, canvas_height - 40), fill="#d3d9cc", width=2)
+    d.line((37, canvas_height - 40, 37 + (1498 - 37) * t / end, canvas_height - 40), fill=green, width=3)
     d.text(
-        (37, 973),
+        (37, canvas_height - 27),
         f"Operation + index by Jev. Text by {state['text_calls'][0]['model'].split('/')[-1]}. "
         "Original timing; waits included.",
         font=font(14),
         fill=muted,
     )
-    d.text((1194, 973), "github.com/browser-use/jev-ultrafast", font=font(12), fill=muted)
+    d.text((1194, canvas_height - 27), "github.com/browser-use/jev-ultrafast", font=font(12), fill=muted)
     canvas.save(folder / f"{i:04d}.png")
 canvas.save(ROOT / "docs/flights-result.png")
 subprocess.run(
