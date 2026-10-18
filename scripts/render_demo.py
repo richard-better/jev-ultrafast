@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import re
 import statistics
 import subprocess
 from pathlib import Path
@@ -49,11 +50,14 @@ def mono(n):
 
 
 ink, muted, green = "#172a20", "#6a766c", "#2a743f"
+# The departure is computed per run, so label it from the recorded goal, e.g. "29 October".
+month, day = re.search(r" on ([A-Z][a-z]+) (\d{1,2}), \d{4}", state["goal"]).groups()
+departure = f"{day} {month}"
 steps = [
     ("One way", "One way"),
     ("Zürich", "Zürich, Switzerland"),
     ("London", "London, United Kingdom"),
-    ("20 September", "Done. Search"),
+    (departure, "Done. Search"),
     ("Search flights", "Search"),
 ]
 for i in range(round((end + 500) * 30 / 1000)):
