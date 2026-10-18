@@ -149,8 +149,12 @@ class Agent:
                     state["text_calls"].append({**helper, "field": action["label"], "value": text})
             # Browser.act checks freshness immediately before input, including after text generation.
             execution_error = None
+            kind = action["kind"]
             try:
-                state["browser"].act(action, page, text=text)
+                result = state["browser"].act(action, page, text=text)
+                if result.get("typed") is False:
+                    # Focus left the field before any key; only the click ran. Log that, not the text.
+                    kind, text = "click", None
             except StalePage:
                 # This rejection guarantees that input has not started; a new decision is safe.
                 raise
@@ -166,7 +170,7 @@ class Agent:
                 {
                     "step": len(state["history"]) + 1,
                     "action": action["label"],
-                    "kind": action["kind"],
+                    "kind": kind,
                     "choice": selected,
                     "probability": decision["probabilities"][selected],
                     "confidence": decision["confidence"],

@@ -7,9 +7,7 @@ import pytest
 from jev_ultrafast import browser
 
 
-@pytest.mark.parametrize("focused", [False, None, "exception"])
-@pytest.mark.parametrize("after_select_all", [False, True])
-def test_focus_loss_stops_text_input_without_retry(monkeypatch, focused, after_select_all):
+def focus_run(monkeypatch, focused, after_select_all):
     result = {"result": {"value": focused}}
     if focused == "exception":
         result = {"exceptionDetails": {"text": "Execution context destroyed"}}
@@ -27,13 +25,33 @@ def test_focus_loss_stops_text_input_without_retry(monkeypatch, focused, after_s
     instance = browser.Browser.__new__(browser.Browser)
     instance.session = "test"
     instance.fresh = Mock(return_value=True)
+    return instance, calls
+
+
+@pytest.mark.parametrize("focused", [False, None, "exception"])
+def test_focus_moved_by_the_click_reports_a_click_without_typing(monkeypatch, focused):
+    instance, calls = focus_run(monkeypatch, focused, after_select_all=False)
+
+    assert instance.act({"id": "e1", "kind": "fill", "node": 1}, {}, text="replacement") == {
+        "executed": "e1", "typed": False,
+    }
+
+    methods = [call.args[0] for call in calls.call_args_list]
+    assert methods.count("Input.dispatchMouseEvent") == 2
+    assert "Input.dispatchKeyEvent" not in methods
+    assert "Input.insertText" not in methods
+
+
+@pytest.mark.parametrize("focused", [False, None, "exception"])
+def test_focus_lost_after_select_all_stops_without_retry(monkeypatch, focused):
+    instance, calls = focus_run(monkeypatch, focused, after_select_all=True)
 
     with pytest.raises(RuntimeError, match="Text target"):
         instance.act({"id": "e1", "kind": "fill", "node": 1}, {}, text="replacement")
 
     methods = [call.args[0] for call in calls.call_args_list]
     assert methods.count("Input.dispatchMouseEvent") == 2
-    assert methods.count("Input.dispatchKeyEvent") == (2 if after_select_all else 0)
+    assert methods.count("Input.dispatchKeyEvent") == 2
     assert "Input.insertText" not in methods
 
 

@@ -272,22 +272,29 @@ def browser_operation(request):
                 for event in ("mousePressed", "mouseReleased"):
                     call("Input.dispatchMouseEvent", type=event, x=x, y=y, button="left", clickCount=1)
                 if kind == "fill":
-                    def require_text_focus():
+                    def text_target(claim):
+                        # Claiming picks the element that will receive keys; later checks require it unchanged.
                         try:
-                            focused = evaluate("""(node => {
-                              const cache=window.__jevFast, e=cache?.nodes.get(node);
-                              return !!(e?.isConnected && document.activeElement===e &&
-                                !e.matches(':disabled') && !e.closest('[aria-disabled="true"],[inert]') &&
-                                e.checkVisibility({checkOpacity:true,checkVisibilityCSS:true}) &&
-                                cache.editable(e));
-                            })(""" + str(action["node"]) + ")")
+                            return bool(evaluate("""(([node,x,y,claim]) => {
+                              const cache=window.__jevFast, e=cache?.nodes.get(node), a=document.activeElement;
+                              const usable=f=>!!(f?.isConnected && !f.matches(':disabled') &&
+                                !f.closest('[aria-disabled="true"],[inert]') &&
+                                f.checkVisibility({checkOpacity:true,checkVisibilityCSS:true}) && cache.editable(f));
+                              if (!claim) return !!cache?.typing && a===cache.typing && usable(a);
+                              cache.typing=null;
+                              if (a===e) return usable(e) && !!(cache.typing=e);
+                              // The click opened an editor in the field's place, e.g. a combobox's search
+                              // popup. It holds focus and sits under the clicked point: the same field.
+                              const hit=document.elementFromPoint(x,y);
+                              return !!(hit && (a===hit || a?.contains(hit)) && usable(a) && (cache.typing=a));
+                            })(""" + json.dumps([action["node"], x, y, claim]) + ")"))
                         except StalePage:
-                            focused = False
-                        if not focused:
-                            # The click already ran. Never retry a partially executed fill as stale.
-                            raise RuntimeError("Text target changed or lost focus; inspect before retrying.")
+                            return False
 
-                    require_text_focus()
+                    if not text_target(claim=True):
+                        # Focus moved somewhere other than the clicked field. No key was sent, so the
+                        # outcome is known: a click. The next observation shows where focus went.
+                        return {"executed": action["id"], "typed": False}
                     call(
                         "Input.dispatchKeyEvent",
                         type="keyDown",
@@ -303,8 +310,10 @@ def browser_operation(request):
                         code="KeyA",
                         modifiers=4 if sys.platform == "darwin" else 2,
                     )
-                    # Page key handlers can redirect focus during Select All as well.
-                    require_text_focus()
+                    # Page key handlers can redirect focus during Select All as well. Select All already
+                    # reached whatever held focus, so this outcome is unknown. Never retry it.
+                    if not text_target(claim=False):
+                        raise RuntimeError("Text target changed or lost focus; inspect before retrying.")
                     call("Input.insertText", text=request["text"])
         return {"executed": action["id"]}
 

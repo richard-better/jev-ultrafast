@@ -8,7 +8,18 @@ INPUT = '<input id="target" aria-label="Target" value="original">'
 EDITOR = '<div id="target" aria-label="Target" contenteditable="true"><span>original</span></div>'
 
 
-def check(browser, field, setup, rejected):
+def popup(top):
+    """A focused editor the click opens, like a combobox's search popup, at the given top edge."""
+    return (
+        "const p=document.createElement('input'), r=target.getBoundingClientRect();"
+        "p.id='popup'; p.setAttribute('aria-label','Where else?');"
+        "p.style.cssText='position:absolute;z-index:9;width:300px;height:60px';"
+        f"p.style.left=(r.x+scrollX)+'px'; p.style.top=({top}+scrollY)+'px';"
+        "document.body.append(p); p.focus();"
+    )
+
+
+def check(browser, field, setup, expected):
     html = (
         '<style>input,textarea,[contenteditable]{display:block;width:240px;height:60px;margin:20px}</style>'
         + field + '<input id="other" value="keep this">'
@@ -22,41 +33,56 @@ def check(browser, field, setup, rejected):
     """ + setup + "})()")
     page = browser.observe(screenshot=False)
     action = next(a for a in page["actions"] if a["kind"] == "fill" and a["label"] == "Target")
-    error = None
+    error, result = None, None
     try:
-        browser.act(action, page, text="replacement")
+        result = browser.act(action, page, text="replacement")
     except RuntimeError as caught:
         error = caught
     actual = browser.evaluate("""(() => {
-      const target=document.getElementById('target');
+      const target=document.getElementById('target'), popup=document.getElementById('popup');
       return {value:target?.value ?? target?.textContent, other:document.getElementById('other').value,
-        clicks:window.clicks, inputs:window.inputs};
+        popup:popup?.value, clicks:window.clicks, inputs:window.inputs};
     })()""")
     assert actual["clicks"] == 1, actual
     assert actual["other"] == "keep this", actual
-    if rejected:
-        assert error is not None, ("Expected a non-retryable error", actual)
-        assert actual["inputs"] == 0, actual
-        assert actual.get("value") in (None, "original"), actual
-    else:
-        assert error is None, error
+    if expected == "popup":
+        # The click opened an editor in the field's place; it receives the text instead.
+        assert error is None and result == {"executed": action["id"]}, (error, result)
+        assert actual["popup"] == "replacement", actual
+        assert actual["value"] == "original", actual
+        assert actual["inputs"] == 1, actual
+        return
+    if expected == "typed":
+        assert error is None and result == {"executed": action["id"]}, (error, result)
         assert actual["value"] == "replacement", actual
         assert actual["inputs"] == 1, actual
+        return
+    # Nothing may be typed anywhere once focus leaves the observed field.
+    assert actual["inputs"] == 0, actual
+    assert actual.get("value") in (None, "original"), actual
+    if expected == "click":
+        # Focus moved before any key: a known click, reported without an error.
+        assert error is None and result == {"executed": action["id"], "typed": False}, (error, result)
+    else:
+        # Select All already reached another element: unknown, never retried.
+        assert error is not None, ("Expected a non-retryable error", actual)
 
 
 def main():
     cases = [
-        ("input replacement", INPUT, "", False),
-        ("textarea replacement", '<textarea id="target" aria-label="Target">original</textarea>', "", False),
-        ("contenteditable replacement", EDITOR, "", False),
-        ("click redirects focus", INPUT, "target.onclick=()=>other.focus();", True),
-        ("select-all redirects focus", INPUT, "target.onkeydown=()=>other.focus();", True),
-        ("click makes target readonly", INPUT, "target.onclick=()=>{target.readOnly=true};", True),
-        ("click disables target", INPUT, "target.onclick=()=>{target.disabled=true};", True),
-        ("click removes target", INPUT, "target.onclick=()=>target.remove();", True),
-        ("click replaces target", INPUT, "target.onclick=()=>{target.outerHTML=target.outerHTML};", True),
-        ("click changes target to password", INPUT, "target.onclick=()=>{target.type='password'};", True),
-        ("click stops editing", EDITOR, "target.onclick=()=>{target.contentEditable='false'};", True),
+        ("input replacement", INPUT, "", "typed"),
+        ("textarea replacement", '<textarea id="target" aria-label="Target">original</textarea>', "", "typed"),
+        ("contenteditable replacement", EDITOR, "", "typed"),
+        ("click redirects focus", INPUT, "target.onclick=()=>other.focus();", "click"),
+        ("click opens an editor in place", INPUT, "target.onclick=()=>{" + popup("r.y") + "};", "popup"),
+        ("click opens an editor elsewhere", INPUT, "target.onclick=()=>{" + popup("r.bottom+200") + "};", "click"),
+        ("select-all redirects focus", INPUT, "target.onkeydown=()=>other.focus();", "stopped"),
+        ("click makes target readonly", INPUT, "target.onclick=()=>{target.readOnly=true};", "click"),
+        ("click disables target", INPUT, "target.onclick=()=>{target.disabled=true};", "click"),
+        ("click removes target", INPUT, "target.onclick=()=>target.remove();", "click"),
+        ("click replaces target", INPUT, "target.onclick=()=>{target.outerHTML=target.outerHTML};", "click"),
+        ("click changes target to password", INPUT, "target.onclick=()=>{target.type='password'};", "click"),
+        ("click stops editing", EDITOR, "target.onclick=()=>{target.contentEditable='false'};", "click"),
     ]
     browser = Browser("about:blank")
     failures = []
@@ -82,9 +108,9 @@ def main():
             except (AssertionError, ValueError, RuntimeError) as error:
                 failures.append(label)
                 print("FAIL:", label, str(error))
-        for label, field, setup, rejected in cases:
+        for label, field, setup, expected in cases:
             try:
-                check(browser, field, setup, rejected)
+                check(browser, field, setup, expected)
                 passed += 1
                 print("PASS:", label)
             except (AssertionError, ValueError, RuntimeError) as error:
