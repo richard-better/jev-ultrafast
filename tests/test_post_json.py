@@ -52,3 +52,10 @@ def test_permanent_errors_are_not_retried(monkeypatch, error):
         model.post_json("https://example.test/v1", "k", {})
     assert post.call_count == 1
     sleep.assert_not_called()
+
+
+def test_provider_errors_carry_the_provider_detail(monkeypatch):
+    response = Mock(status_code=400, is_error=True, text='{"error":\n  {"type":"MissingSessionID"}}')
+    monkeypatch.setattr(model.CLIENT, "post", Mock(return_value=response))
+    with pytest.raises(RuntimeError, match='HTTP 400; no action executed. {"error": {"type":"MissingSessionID"}}'):
+        model.post_json("https://example.test/v1", "k", {})
