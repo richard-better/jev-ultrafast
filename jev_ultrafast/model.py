@@ -9,17 +9,18 @@ import httpx
 
 from .questions import NEXT_ACTION, TARGET, TEXT_VALUE
 
-CLIENT = httpx.Client(http2=True, timeout=25)
+USER_AGENT = "quietlabs.ai/jev-ultrafast-repl"
+CLIENT = httpx.Client(http2=True, timeout=25, headers={"User-Agent": USER_AGENT})
 STATES = ("checked", "selected", "expanded", "pressed")
 # Failures that can clear on a second try. A bad URL, a redirect loop or an
 # undecodable body fails the same way every time.
 TRANSIENT_ERRORS = (httpx.TimeoutException, httpx.NetworkError, httpx.RemoteProtocolError)
 
 
-def post_json(url, key, body):
+def post_json(url, key, body, headers=None):
     for attempt in range(3):
         try:
-            response = CLIENT.post(url, json=body, headers={"Authorization": f"Bearer {key}"})
+            response = CLIENT.post(url, json=body, headers={"Authorization": f"Bearer {key}", **(headers or {})})
         except httpx.HTTPError as error:
             if isinstance(error, TRANSIENT_ERRORS) and attempt < 2:
                 time.sleep(0.5 * 2**attempt)
@@ -181,7 +182,7 @@ def field_context(goal, action, page, history):
     }
 
 
-def field_text(context):
+def field_text(context, session):
     key = os.environ.get("TEXT_MODEL_API_KEY")
     if not key:
         raise ValueError("TYPE_TEXT needs TEXT_MODEL_API_KEY; no text is hardcoded or guessed by the executor.")
@@ -190,6 +191,9 @@ def field_text(context):
     reasoning = {"thinking": {"type": "disabled"}} if "api.deepseek.com/" in base else {"reasoning": {"effort": "low"}}
     if os.environ.get("TEXT_MODEL_REASONING") == "none":
         reasoning = {"reasoning": {"enabled": False}}
+    if "opencode.ai/zen/" in base:
+        # OpenCode rejects both fields above and accepts only OpenAI's top-level effort.
+        reasoning = {"reasoning_effort": os.environ.get("TEXT_MODEL_REASONING") or "low"}
     started = time.perf_counter()
     result = post_json(
         base + "/chat/completions",
@@ -207,6 +211,8 @@ def field_text(context):
                 },
             ],
         },
+        # OpenCode Go rejects requests without a session ID; it routes and caches by it.
+        headers={"x-opencode-session": session},
     )
     try:
         output = json.loads(result["choices"][0]["message"]["content"])
