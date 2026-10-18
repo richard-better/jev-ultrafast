@@ -6,7 +6,7 @@ from unittest.mock import patch
 from urllib.parse import quote
 
 from jev_ultrafast import Agent, model
-from jev_ultrafast.browser import Browser, StalePage, browser_operation
+from jev_ultrafast.browser import Browser, StalePage, browser_operation, viewport
 from jev_ultrafast.model import action_space
 
 HTML = """<!doctype html><title>Guard checks</title>
@@ -250,7 +250,8 @@ def main():
             "({width:innerWidth,height:innerHeight,scrollHeight:document.documentElement.scrollHeight})")
         passed.append("scrolling works below the former fixed 650-pixel input coordinate")
         # Only on-screen controls are offered. Restore the agent's real viewport for later fixtures.
-        browser.call("Emulation.setDeviceMetricsOverride", width=1120, height=780,
+        width, height = viewport()
+        browser.call("Emulation.setDeviceMetricsOverride", width=width, height=height,
                      deviceScaleFactor=1, mobile=False)
         browser.evaluate("document.body.style.height='';window.scrollTo(0,0)")
 
