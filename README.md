@@ -140,6 +140,16 @@ cannot replay the interrupted action. Pre-input stale-page rejections remain
 retryable, and failures while observing an already-confirmed action retain its
 execution record.
 
+## Profile a run
+
+Set `JEV_TRACE_DIR` to record OpenTelemetry spans for every run: one OTLP JSON lines file per run, with model requests (`gen_ai.chat`), browser stages (`browser.stage`), waits and commands. Spans hold timings, operations and outcomes, never page text, typed values, prompts or credentials. `scripts/measure_flights.py` always writes a trace next to its state.
+
+```bash
+uv run python -m jev_ultrafast.trace_report artifacts/dynamic -o trace-report.html
+```
+
+The report splits each run's wall time exclusively, so nested spans never double count and untraced agent code stays visible as uninstrumented time. It shows each run's timeline and model requests on one scale, then medians and p95s per category and per call across runs.
+
 ## Development
 
 ```bash
