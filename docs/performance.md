@@ -14,6 +14,12 @@ Timing begins at the first prediction after initial homepage observation and end
 
 The recording reports 104,157 TypeSafe input tokens and 6,474 output tokens across all requests. OpenCode Go is a subscription and reports no per-request charge for the two text calls.
 
+## Direct URL baseline
+
+When the route and date are known up front, the task needs no agent. Google Flights accepts a deep link, `https://www.google.com/travel/flights?hl=en&q=Flights from Zurich to London on 2026-10-29 one way economy 1 adult`, which opens the same search. Three takes on the same browser profile showed verified results **0.667, 0.722 and 0.840 s** after navigation started, with no model calls. The [URL video](url-demo.mp4) uses the median take; [measurements](url-measurement.json) list every take.
+
+The clocks differ: this one starts at navigation and includes loading the page, while the agent's starts after its initial page has loaded. The same content checks pass (one way, Zürich, London, the date and year, and flight results on that date); the path check does not apply, because the deep link keeps its `/travel/flights?q=` address. The agent's value is in goals that need reading and choosing on the page, or sites whose state cannot be put in a URL; this task is a benchmark of driving the page, not of that.
+
 The previous video, a 7.073-second run at 1120×780 with Mercury through OpenRouter and a 178 ms median Jev latency, is described in the [earlier performance report](https://github.com/browser-use/jev-ultrafast/blob/1231850a0bf1a0c0341fe408ef1668dbbfdfac46/docs/performance.md). The matched comparison below predates the current recording and keeps its original settings.
 
 ## Matched runtime comparison
