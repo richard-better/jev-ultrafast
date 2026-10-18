@@ -24,7 +24,9 @@ def verify(page):
         date_in_url = False
     actions = page["actions"]
     values = {a["label"].strip(): a.get("value") for a in actions}
-    flights = [a["label"] for a in actions if "Select flight" in a["label"]]
+    # Each visible result row has a hittable "Flight details. Leaves ... on <date>" button. The
+    # "Select flight" row links sit under the row text, so they are not offered, and must not be clicked.
+    flights = [a["label"] for a in actions if a["label"].startswith("Flight details. Leaves ")]
     checks = {
         "search_page": parsed.hostname == "www.google.com" and parsed.path == "/travel/flights/search",
         "one_way": values.get("Change ticket type. One way") == "One way",
