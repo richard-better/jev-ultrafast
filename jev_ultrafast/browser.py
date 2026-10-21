@@ -47,6 +47,78 @@ FOCUS_SETTLED = """new Promise(resolve => {
   };
   requestAnimationFrame(check);
 })"""
+# After input, wait briefly and read-only for state the next decision needs. Every wait is capped:
+# - a same-tab link to a different URL: until the URL or document changes, at most 1500 ms;
+# - typing into a combobox: until one of its suggestions is visible, at most 200 ms;
+# - clicking a control that declares a menu or listbox popup and reports aria-expanded="true": until
+#   one of its popup items is visible. Items may render asynchronously (at most 1000 ms) or into a
+#   body-level portal outside aria-controls, and may fade in (at most 3000 ms, and only while the
+#   trigger stays expanded: background tabs throttle the frames that drive a fade);
+# - anything else: two animation frames, at most 50 ms.
+# Polling runs on animation frames and a 50 ms timer, so a throttled tab keeps checking.
+SETTLE = """(action => new Promise(resolve => {
+  const field=window.__jevFast?.nodes.get(action.node);
+  const role=field?.getAttribute('role');
+  const autocomplete=action.kind==='fill' && role==='combobox';
+  const navigation=action.kind==='click' && action.navigation &&
+    ['_self','_top','_parent'].includes(action.navigation.target.toLowerCase()) &&
+    action.navigation.url!==action.source_url;
+  const haspopup=field?.getAttribute('aria-haspopup') || (role==='combobox' ? 'listbox' : null);
+  const popup=action.kind==='click' && ['true','menu','listbox'].includes(haspopup);
+  const expanded=()=>!!field?.isConnected && field.getAttribute('aria-expanded')==='true';
+  // The document and its open shadow roots, as the snapshot reads them.
+  const roots=()=>{
+    const all=[document];
+    for (let i=0;i<all.length;i++)
+      for (const e of all[i].querySelectorAll('*')) if (e.shadowRoot) all.push(e.shadowRoot);
+    return all;
+  };
+  const owned=()=>{
+    const ids=(field?.getAttribute('aria-controls')||field?.getAttribute('aria-owns')||'')
+      .split(/\\s+/).filter(Boolean);
+    const scope=field?.getRootNode?.().getElementById ? field.getRootNode() : document;
+    return {ids, found:ids.map(id=>scope.getElementById(id)).filter(Boolean)};
+  };
+  const laid=e=>{ const r=e.getBoundingClientRect(); return r.width>0 && r.height>0; };
+  const shown=e=>{
+    const r=e.getBoundingClientRect();
+    return r.width>0 && r.height>0 && r.bottom>0 && r.top<innerHeight &&
+      e.checkVisibility({checkOpacity:true,checkVisibilityCSS:true});
+  };
+  const suggestions=()=>{
+    const {ids,found}=owned();
+    return (ids.length ? found : roots()).flatMap(root=>[...root.querySelectorAll('[role="option"]')]);
+  };
+  const popupItems=()=>{
+    const selector='[role="option"],[role="menuitem"],[role="menuitemradio"],[role="menuitemcheckbox"]';
+    const scoped=owned().found.flatMap(root=>[...root.querySelectorAll(selector)]);
+    if (scoped.length) return scoped;
+    // A portal: aria-controls can name an empty container while the items render elsewhere.
+    return roots().flatMap(root=>[...root.querySelectorAll(selector)])
+      .filter(e=>e.closest('[role="listbox"],[role="menu"]'));
+  };
+  const start=performance.now(), base=navigation ? 1500 : autocomplete ? 200 : 50;
+  let frames=0, stopped=false, timer=0;
+  const finish=()=>{ stopped=true; clearTimeout(timer); resolve(); };
+  const check=()=>{
+    if (stopped) return;
+    let cap=base, ready=frames>=2;
+    if (navigation) ready=ready && (location.href!==action.source_url ||
+      performance.timeOrigin!==action.source_document);
+    if (autocomplete) ready=ready && suggestions().some(shown);
+    if (popup && expanded()) {
+      const items=popupItems(), visible=items.some(shown);
+      if (!visible) cap=Math.max(cap,items.some(laid) ? 3000 : 1000);
+      ready=ready && visible;
+    }
+    if (ready || performance.now()-start>=cap) return finish();
+    clearTimeout(timer);
+    timer=setTimeout(check,50);
+  };
+  const frame=()=>{ if (stopped) return; frames++; check(); requestAnimationFrame(frame); };
+  requestAnimationFrame(frame);
+  timer=setTimeout(check,50);
+}))"""
 # Map a point inside a frame to this viewport, only if the frame element itself is hit there.
 PLACE = """(([node,x,y]) => {
   const f=window.__jevFast?.nodes.get(node);
@@ -249,37 +321,7 @@ class Browser:
                 with tracing.span("browser.stage", stage="settle"):
                     run(
                         "Runtime.evaluate",
-                        expression="""(action => new Promise(resolve => {
-                          const field=window.__jevFast?.nodes.get(action.node);
-                          const autocomplete=action.kind==='fill' && field?.getAttribute('role')==='combobox';
-                          const navigation=action.kind==='click' && action.navigation &&
-                            ['_self','_top','_parent'].includes(action.navigation.target.toLowerCase()) &&
-                            action.navigation.url!==action.source_url;
-                          let frames=0, stopped=false;
-                          const finish=()=>{stopped=true;resolve()};
-                          setTimeout(finish,navigation ? 1500 : autocomplete ? 200 : 50);
-                          const ready=()=>{
-                            if (stopped) return;
-                            let suggestionsReady=true;
-                            if (autocomplete) {
-                              const ids=(field?.getAttribute('aria-controls')||field?.getAttribute('aria-owns')||'')
-                                .split(/\\s+/).filter(Boolean);
-                              const roots=ids.length ?
-                                ids.map(id=>document.getElementById(id)).filter(Boolean) : [document];
-                              const options=roots.flatMap(root=>[...root.querySelectorAll('[role="option"]')]);
-                              suggestionsReady=options.some(e=>{
-                                const r=e.getBoundingClientRect();
-                                return r.width && r.height && r.bottom>0 && r.top<innerHeight &&
-                                  e.checkVisibility({checkOpacity:true,checkVisibilityCSS:true});
-                              });
-                            }
-                            const navigated=location.href!==action.source_url ||
-                              performance.timeOrigin!==action.source_document;
-                            if (++frames>=2 && (!navigation || navigated) && suggestionsReady) finish();
-                            else requestAnimationFrame(ready);
-                          };
-                          requestAnimationFrame(ready);
-                        }))(""" + json.dumps(action) + ")",
+                        expression=f"({SETTLE})({json.dumps(action)})",
                         awaitPromise=True,
                         returnByValue=True,
                     )

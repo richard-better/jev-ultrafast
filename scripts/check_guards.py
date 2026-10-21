@@ -327,6 +327,94 @@ def main():
         assert not browser.fresh(page, action)
         passed.append("navigation invalidates the old document")
 
+        # Regression: a popup menu that renders into a body-level portal (aria-controls names an
+        # empty container) and fades in slower than the 50 ms post-click wait must not be
+        # observed as empty. Mirrors Google Flights' ticket-type menu.
+        browser.evaluate("document.body.innerHTML=" + repr("""
+          <div id="tt" role="combobox" aria-expanded="false" aria-controls="lb-empty"
+               tabindex="0" style="width:220px;height:40px">Ticket type. Round trip</div>
+          <span role="listbox" id="lb-empty"></span>
+        """))
+        browser.evaluate("""document.querySelector('#tt').addEventListener('click', () => {
+            const tt = document.querySelector('#tt');
+            tt.setAttribute('aria-expanded', 'true');
+            const portal = document.createElement('ul');
+            portal.setAttribute('role', 'listbox');
+            portal.style.opacity = '0';
+            for (const label of ['Round trip', 'One way', 'Multi-city']) {
+              const li = document.createElement('li');
+              li.setAttribute('role', 'option');
+              li.textContent = label;
+              li.style.cssText = 'width:180px;height:38px';
+              portal.append(li);
+            }
+            document.body.append(portal);
+            setTimeout(() => { portal.style.opacity = '1'; }, 700);
+        })""")
+        page = browser.observe(screenshot=False)
+        ticket_type = next(a for a in page["actions"] if a["label"].startswith("Ticket type"))
+        browser.act(ticket_type, page)
+        page = browser.observe(screenshot=False)
+        assert {a["label"] for a in page["actions"] if a.get("role") == "option"} == {
+            "Round trip", "One way", "Multi-city"}
+        passed.append("portal popup that fades in after the click is observed, not misread as empty")
+
+        # Regression: the portal itself can be created asynchronously, here inside an open shadow
+        # root: the trigger already reports aria-expanded=true while no popup item exists yet.
+        browser.evaluate("document.body.innerHTML=" + repr("""
+          <button id="tt2" aria-haspopup="menu" aria-expanded="false"
+                  style="width:220px;height:40px">Ticket type. Round trip</button><div id="host"></div>
+        """))
+        browser.evaluate("""document.querySelector('#tt2').addEventListener('click', () => {
+            document.querySelector('#tt2').setAttribute('aria-expanded', 'true');
+            setTimeout(() => {
+              const portal = document.createElement('ul');
+              portal.setAttribute('role', 'menu');
+              for (const label of ['Round trip', 'One way']) {
+                const li = document.createElement('li');
+                li.setAttribute('role', 'menuitem');
+                li.textContent = label;
+                li.style.cssText = 'width:180px;height:38px';
+                portal.append(li);
+              }
+              document.querySelector('#host').attachShadow({mode: 'open'}).append(portal);
+            }, 250);
+        })""")
+        page = browser.observe(screenshot=False)
+        ticket_type = next(a for a in page["actions"] if a["label"].startswith("Ticket type"))
+        browser.act(ticket_type, page)
+        page = browser.observe(screenshot=False)
+        assert {a["label"] for a in page["actions"] if a.get("role") == "menuitem"} == {
+            "Round trip", "One way"}
+        passed.append("asynchronously created shadow-root portal menu gets an appearance grace")
+
+        # The popup waits are opt-in: an expanded disclosure without aria-haspopup, and a popup trigger
+        # whose menu closes again, keep the short post-click wait instead of the popup caps.
+        browser.evaluate("document.body.innerHTML=" + repr("""
+          <button id="disclosure" aria-expanded="false" style="width:220px;height:40px">Details</button>
+          <button id="flicker" aria-haspopup="menu" aria-expanded="false"
+                  style="width:220px;height:40px">Flicker menu</button>
+          <ul role="menu"><li role="menuitem" style="opacity:0;width:180px;height:38px">Hidden leftover</li></ul>
+        """))
+        browser.evaluate("""(() => {
+            const d = document.querySelector('#disclosure');
+            d.addEventListener('click', () => d.setAttribute('aria-expanded', 'true'));
+            const f = document.querySelector('#flicker');
+            f.addEventListener('click', () => {
+              f.setAttribute('aria-expanded', 'true');
+              setTimeout(() => f.setAttribute('aria-expanded', 'false'), 30);
+            });
+        })()""")
+        for label in ("Details", "Flicker menu"):
+            page = browser.observe(screenshot=False)
+            control = next(a for a in page["actions"] if a["label"] == label)
+            browser.act(control, page)
+            started = time.monotonic()
+            browser.observe(screenshot=False)
+            elapsed = time.monotonic() - started
+            assert elapsed < 0.6, f"{label}: post-click wait took {elapsed:.2f} s"
+        passed.append("disclosures and closed popups keep the short post-click wait")
+
         browser.evaluate("document.body.innerHTML=" + repr("""
           <form>
             <label><input id="preference" type="checkbox">Announcements</label>
