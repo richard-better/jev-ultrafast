@@ -521,7 +521,7 @@ def browser_operation(request):
                   const cache=window.__jevFast, e=cache?.nodes.get(action.node);
                   if (!e?.isConnected || e.matches(':disabled') || e.closest('[aria-disabled="true"],[inert]') ||
                       !cache.visible(e)) return null;
-                  if (action.kind==='fill' && !cache.editable(e)) return null;
+                  if (['fill','press'].includes(action.kind) && !cache.editable(e)) return null;
                   const r=e.getBoundingClientRect(), cx=r.x+r.width/2, cy=r.y+r.height/2;
                   if (!r.width || !r.height || cx<0 || cy<0 || cx>=innerWidth || cy>=innerHeight) return null;
                   // The same point the snapshot offered: e's centre, a visible fragment of a wrapped
@@ -557,7 +557,7 @@ def browser_operation(request):
                     x, y = target["x"], target["y"]
                     for event in ("mousePressed", "mouseReleased"):
                         call("Input.dispatchMouseEvent", type=event, x=x, y=y, button="left", clickCount=1)
-                    if kind == "fill":
+                    if kind in {"fill", "press"}:
                         def text_target(claim):
                             # Claiming picks the element that will receive keys; later checks require it unchanged.
                             try:
@@ -594,6 +594,18 @@ def browser_operation(request):
                             # Focus moved somewhere other than the clicked field. No key was sent, so the
                             # outcome is known: a click. The next observation shows where focus went.
                             return {"executed": action["id"], "typed": False}
+                        if kind == "press":
+                            # One key into the claimed field. Enter is a mutation: an interrupted reply is
+                            # unknown execution, never a retry.
+                            call(
+                                "Input.dispatchKeyEvent", type="keyDown", key="Enter", code="Enter",
+                                windowsVirtualKeyCode=13, text="\r",
+                            )
+                            call(
+                                "Input.dispatchKeyEvent", type="keyUp", key="Enter", code="Enter",
+                                windowsVirtualKeyCode=13,
+                            )
+                            return {"executed": action["id"]}
                         call(
                             "Input.dispatchKeyEvent",
                             type="keyDown",

@@ -70,8 +70,10 @@ def test_invalid_choice_is_rejected(mutation):
 def test_one_index_per_node_with_operation_specific_targets():
     elements, targets, controls = model.action_space(page()["actions"])
     assert len(elements) == 2
-    assert elements[0]["operations"] == ["TYPE_TEXT", "CLICK"]
+    assert elements[0]["operations"] == ["TYPE_TEXT", "PRESS_ENTER", "CLICK"]
     assert targets["TYPE_TEXT"]["1"]["id"] == "e1"
+    # Enter reuses the editable field's own entry; the snapshot carries no extra action for it.
+    assert targets["PRESS_ENTER"] == {"1": {**page()["actions"][0], "kind": "press"}}
     assert targets["CLICK"]["1"]["id"] == "e2"
     assert targets["CLICK"]["2"]["id"] == "e3"
     assert "WAIT" in controls
@@ -141,7 +143,25 @@ def test_all_heads_are_one_request_and_only_matching_head_executes(monkeypatch):
     d = model.choose(page(), "Find a book", [])
     assert len(calls) == 1
     assert d["operation"] == "TYPE_TEXT" and d["target"] == "1" and d["choice"] == "e1"
-    assert set(calls[0]["questions"]) == {"operation", "click_target", "type_text_target"}
+    assert set(calls[0]["questions"]) == {"operation", "click_target", "type_text_target", "press_enter_target"}
+
+
+def test_press_enter_targets_the_editable_field(monkeypatch):
+    def post(_url, _key, body):
+        assert set(body["questions"]["press_enter_target"]["criteria"]) == {"1"}
+        return {
+            "model": "test",
+            "answers": {
+                "operation": choice(body["questions"]["operation"]["criteria"], "PRESS_ENTER"),
+                "press_enter_target": choice(["1"], "1"),
+                "type_text_target": {"choice": "invented"},
+            },
+        }
+
+    monkeypatch.setenv("TYPESAFE_API_KEY", "test")
+    monkeypatch.setattr(model, "post_json", post)
+    d = model.choose(page(), "Send the message", [])
+    assert (d["operation"], d["target"], d["choice"]) == ("PRESS_ENTER", "1", "e1")
 
 
 def test_click_cannot_consume_a_text_target(monkeypatch):
@@ -360,6 +380,56 @@ def test_fill_whose_click_moved_focus_is_logged_as_a_click_and_the_run_continues
     assert runner.pending_text is None
     assert runner.state["status"] == "ready"
     runner.state["browser"].act.assert_called_once()
+
+
+def test_press_enter_skips_the_text_helper_and_is_logged_before_observing(runner, monkeypatch):
+    helper = Mock(side_effect=AssertionError("Enter needs no generated text"))
+    monkeypatch.setattr(loop, "field_text", helper)
+    runner.state["decision"] = {**decision("e1"), "operation": "PRESS_ENTER"}
+    runner.state["browser"].act.return_value = {"executed": "e1"}
+    runner.state["browser"].observe.side_effect = StalePage("Navigation after Enter")
+    with pytest.raises(StalePage):
+        runner.command("act", {"fingerprint": runner.state["page"]["fingerprint"]})
+    helper.assert_not_called()
+    runner.state["browser"].act.assert_called_once_with(
+        {**page()["actions"][0], "kind": "press"}, runner.state["page"], text=None
+    )
+    entry = runner.state["history"][-1]
+    assert (entry["kind"], entry["operation"], entry["text"], entry["execution"]) == (
+        "press", "PRESS_ENTER", None, "confirmed")
+
+
+def test_enter_whose_click_moved_focus_is_logged_as_a_click(runner):
+    runner.state["decision"] = {**decision("e1"), "operation": "PRESS_ENTER"}
+    runner.state["browser"].act.return_value = {"executed": "e1", "typed": False}
+    runner.command("act", {"fingerprint": runner.state["page"]["fingerprint"]})
+    entry = runner.state["history"][-1]
+    assert (entry["kind"], entry["text"], entry["execution"]) == ("click", None, "confirmed")
+    assert runner.state["status"] == "ready"
+
+
+def test_interrupted_enter_stops_the_run_without_replaying(runner, monkeypatch):
+    choose = Mock(return_value={**decision("e1"), "operation": "PRESS_ENTER"})
+    monkeypatch.setattr(loop, "choose", choose)
+    runner.state["decision"] = {**decision("e1"), "operation": "PRESS_ENTER"}
+    runner.state["browser"].act.side_effect = TimeoutError("Enter reply lost")
+    with pytest.raises(TimeoutError):
+        runner.command("act", {"fingerprint": runner.state["page"]["fingerprint"]})
+    entry = runner.state["history"][-1]
+    assert (entry["kind"], entry["execution"], entry["executed_ms"]) == ("press", "unknown", None)
+    assert runner.state["status"] == "blocked"
+    with pytest.raises(ValueError, match="stopped"):
+        runner.command("tick")
+    choose.assert_not_called()
+    runner.state["browser"].act.assert_called_once()
+
+
+def test_press_enter_on_a_non_editable_target_executes_nothing(runner):
+    runner.state["decision"] = {**decision("e3"), "operation": "PRESS_ENTER"}
+    with pytest.raises(ValueError, match="editable field"):
+        runner.command("act", {"fingerprint": runner.state["page"]["fingerprint"]})
+    runner.state["browser"].act.assert_not_called()
+    assert runner.state["decision"] is None
 
 
 @pytest.mark.parametrize("text", ["book", ""])

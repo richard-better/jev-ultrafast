@@ -10,6 +10,7 @@ Submit populated search fields before opening a result; a populated field alone 
 WAIT only when the needed control is absent/disabled, or submitted results or requested details
 are still loading.
 If Search/Submit is visible and the required fields are ready, CLICK it immediately.
+If no Search/Send control is offered, PRESS_ENTER in the populated field to submit it.
 An OPEN_ operation opens a known page directly from the goal's details, e.g. search results.
 Prefer it to filling a form when it reaches the same state; it cannot select or confirm anything.
 Recent WAIT actions are not evidence of loading. Prefer a useful visible control over WAIT.
@@ -25,7 +26,8 @@ never choose it while SCROLL_DOWN or a way to dismiss a dialog is offered."""
 TARGET = """Choose the best observed target if the next operation is the one specified in this question.
 Use the user's entire goal, field values, nearby text, and recent actions. This question chooses only
 a target for that operation; another question decides which operation to execute. Do not choose
-a field that already contains the requested value. Choose only an offered element index."""
+a field that already contains the requested value for TYPE_TEXT; PRESS_ENTER needs the populated field.
+Choose only an offered element index."""
 
 TEXT_VALUE = """Return a JSON object with exactly one key, text: the exact string to enter in the selected field.
 Infer the value from the original goal and field meaning, using current page context and history.

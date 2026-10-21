@@ -180,6 +180,11 @@ class Agent:
                 state["elapsed_ms"] = round((time.perf_counter() - state["started_at"]) * 1000)
                 return
             action = next(a for a in page["actions"] if a["id"] == selected)
+            if decision["operation"] == "PRESS_ENTER":
+                # Enter targets an observed editable field; the field's own action carries no Enter.
+                if action["kind"] != "fill":
+                    raise ValueError("Enter needs an observed editable field; no action executed.")
+                action = {**action, "kind": "press"}
             if len(state["history"]) >= self.max_steps:
                 state["status"] = "blocked"
                 raise ValueError(f"Stopped at the {self.max_steps}-action budget")

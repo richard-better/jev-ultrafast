@@ -415,6 +415,51 @@ def main():
             assert elapsed < 0.6, f"{label}: post-click wait took {elapsed:.2f} s"
         passed.append("disclosures and closed popups keep the short post-click wait")
 
+        # PRESS_ENTER reuses the editable fields' own entries: Enter submits a form without a submit
+        # button and sends a chat message without a send button. Read-only fields get no Enter.
+        browser.evaluate("document.body.innerHTML=" + repr("""
+          <form onsubmit="event.preventDefault(); window.submitted=this.query.value">
+            <input name="query" aria-label="Query" value="a book">
+          </form>
+          <textarea aria-label="Message" onkeydown="if(event.key==='Enter') {
+            event.preventDefault(); window.message=this.value;
+          }">Hello</textarea>
+          <input aria-label="Read only" readonly>
+          <textarea aria-label="ARIA read only" aria-readonly="true"></textarea>
+          <input aria-label="Disabled" disabled>
+          <button id="steal">Elsewhere</button>
+          <input aria-label="Redirecting" onmouseup="setTimeout(()=>document.querySelector('#steal').focus(),20)"
+                 onkeydown="window.redirectedKeys=(window.redirectedKeys||0)+1">
+        """))
+        page = browser.observe(screenshot=False)
+        entries = len(page["actions"])
+        presses = action_space(page["actions"])[1]["PRESS_ENTER"]
+        assert {a["label"] for a in presses.values()} == {"Query", "Message", "Redirecting"}
+        assert entries == len(browser.observe(screenshot=False)["actions"])
+        assert not any(a["kind"] == "press" for a in page["actions"]), "Enter must not add snapshot entries"
+        query = next(a for a in presses.values() if a["label"] == "Query")
+        assert browser.act(query, page) == {"executed": query["id"]}
+        assert browser.evaluate("window.submitted") == "a book"
+        passed.append("Enter submits a populated native form without a submit button")
+        page = browser.observe(screenshot=False)
+        message = next(a for a in action_space(page["actions"])[1]["PRESS_ENTER"].values() if a["label"] == "Message")
+        browser.act(message, page)
+        assert browser.evaluate("window.message") == "Hello"
+        passed.append("Enter sends a populated chat message without a send button")
+        page = browser.observe(screenshot=False)
+        redirecting = next(
+            a for a in action_space(page["actions"])[1]["PRESS_ENTER"].values() if a["label"] == "Redirecting"
+        )
+        assert browser.act(redirecting, page) == {"executed": redirecting["id"], "typed": False}
+        assert browser.evaluate("window.redirectedKeys") is None
+        assert browser.evaluate("document.activeElement.id") == "steal"
+        passed.append("Enter is not sent when the click moved focus elsewhere; only the click ran")
+        page = browser.observe(screenshot=False)
+        message = next(a for a in action_space(page["actions"])[1]["PRESS_ENTER"].values() if a["label"] == "Message")
+        browser.evaluate("document.querySelector('textarea').readOnly=true")
+        assert not browser.fresh(page, message)
+        passed.append("read-only message invalidates Enter before input")
+
         browser.evaluate("document.body.innerHTML=" + repr("""
           <form>
             <label><input id="preference" type="checkbox">Announcements</label>

@@ -9,22 +9,26 @@ from jev_ultrafast import browser as runtime
 
 HTML = """<!doctype html><title>Interrupted action</title>
 <button onclick="window.submissions=(window.submissions||0)+1">Submit</button>
-<label>Message<input oninput="window.inputs=(window.inputs||0)+1"></label>
+<label>Message<input oninput="window.inputs=(window.inputs||0)+1"
+  onkeydown="if(event.key==='Enter')window.enters=(window.enters||0)+1"></label>
 <select aria-label="Category" onchange="window.changes=(window.changes||0)+1">
 <option>First</option><option>Second</option></select>"""
 
 
 def check(kind):
+    # PRESS_ENTER targets the observed editable field's own entry.
+    observed = "fill" if kind == "press" else kind
     with Agent("data:text/html," + quote(HTML), "Exercise an interrupted action") as agent:
         # Initial navigation readiness is independent of these execution checks.
         for _ in range(10):
             page = agent.browser.observe(screenshot=False)
-            if any(a["kind"] == kind for a in page["actions"]):
+            if any(a["kind"] == observed for a in page["actions"]):
                 break
         agent.state["page"] = page
-        action = next(a for a in page["actions"] if a["kind"] == kind)
+        action = next(a for a in page["actions"] if a["kind"] == observed)
+        operations = {"click": "CLICK", "fill": "TYPE_TEXT", "select": "SELECT", "press": "PRESS_ENTER"}
         selected = {
-            "choice": action["id"], "operation": {"click": "CLICK", "fill": "TYPE_TEXT", "select": "SELECT"}[kind],
+            "choice": action["id"], "operation": operations[kind],
             "target": "1", "confidence": 1, "probabilities": {action["id"]: 1}, "latency_ms": 0, "usage": {},
         }
         cdp = runtime.cdp
@@ -36,6 +40,10 @@ def check(kind):
             is_mutation = (
                 (kind == "click" and method == "Input.dispatchMouseEvent" and params.get("type") == "mouseReleased")
                 or (kind == "fill" and method == "Input.insertText")
+                or (
+                    kind == "press" and method == "Input.dispatchKeyEvent"
+                    and params.get("type") == "keyDown" and params.get("key") == "Enter"
+                )
                 or (
                     kind == "select" and method == "Runtime.evaluate"
                     and "action.kind==='select'" in params["expression"]
@@ -58,7 +66,7 @@ def check(kind):
             else:
                 raise AssertionError("The injected timeout did not reach the caller")
             assert dropped
-            counter = {"click": "submissions", "fill": "inputs", "select": "changes"}[kind]
+            counter = {"click": "submissions", "fill": "inputs", "select": "changes", "press": "enters"}[kind]
             assert agent.browser.evaluate(f"window.{counter}") == 1, "The actual DOM side effect must be verified"
             # A new run/tick must not repeat an action whose acknowledgement was lost.
             try:
@@ -79,7 +87,7 @@ def check(kind):
 
 def main():
     failures = []
-    for kind in ("click", "fill", "select"):
+    for kind in ("click", "fill", "select", "press"):
         try:
             check(kind)
         except AssertionError as error:

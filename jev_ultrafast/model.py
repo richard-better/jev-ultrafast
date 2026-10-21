@@ -146,6 +146,11 @@ def action_space(actions):
             target = f"{index}:{len(element['options']) + 1}"
             element["options"].append({"index": target, "label": action["label"], "value": action["value"]})
         group[target] = action
+        if kind == "fill":
+            # Enter reuses the observed editable field as its target. It adds no snapshot entry, so it
+            # cannot crowd other controls out of the 250-entry cap.
+            element["operations"].append("PRESS_ENTER")
+            targets.setdefault("PRESS_ENTER", {})[target] = {**action, "kind": "press"}
     return elements, targets, controls
 
 
@@ -155,6 +160,7 @@ def choose(state, goal, history):
         "CLICK": "Click an element, button, menu option, autocomplete suggestion, or calendar day.",
         "TYPE_TEXT": "Enter or replace text in an editable field. A small LLM will supply the value from the goal.",
         "SELECT": "Select an observed dropdown value.",
+        "PRESS_ENTER": "Press Enter in an editable field to submit it or send its message.",
     }
     operations = {key: labels[key] for key in targets}
     operations.update({key: value["label"] for key, value in controls.items()})
