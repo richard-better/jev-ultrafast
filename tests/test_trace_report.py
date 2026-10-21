@@ -75,8 +75,8 @@ def test_a_report_renders_every_run_with_its_verdict(tmp_path):
         encoded("1", "jev.run", 0, 2000, **{"jev.verified": True, "jev.status": "done"}),
         encoded("2", "gen_ai.chat", 100, 400, "1", **{"jev.purpose": "choose"}),
     ]}]}]}
-    (tmp_path / "trace.jsonl").write_text(json.dumps(line) + "\n")
+    (tmp_path / "trace.jsonl").write_text(json.dumps(line) + "\n", encoding="utf-8")
     output = tmp_path / "report.html"
     trace_report.main([str(tmp_path), "-o", str(output)])
-    page = output.read_text()
+    page = output.read_text(encoding="utf-8")
     assert "✓ Pass" in page and "2.00 s" in page and "Action choice request" in page
