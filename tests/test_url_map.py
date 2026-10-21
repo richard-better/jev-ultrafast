@@ -101,6 +101,8 @@ def test_an_entry_is_its_own_operation():
 
 @pytest.mark.parametrize(("content", "accepted"), [
     (json.dumps({"parameters": VALUES}), True),
+    ("```json\n" + json.dumps({"parameters": VALUES}) + "\n```", True),
+    ("```\n" + json.dumps({"parameters": None}) + "\n```", False),
     (json.dumps({"parameters": None}), False),
     (json.dumps({"parameters": VALUES, "url": "https://x"}), False),
     ("https://shop.example/search?q=lamp", False),

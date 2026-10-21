@@ -3,6 +3,7 @@
 import json
 import math
 import os
+import re
 import time
 
 import httpx
@@ -16,6 +17,8 @@ STATES = ("checked", "selected", "expanded", "pressed")
 # Failures that can clear on a second try. A bad URL, a redirect loop or an
 # undecodable body fails the same way every time.
 TRANSIENT_ERRORS = (httpx.TimeoutException, httpx.NetworkError, httpx.RemoteProtocolError)
+# Some JSON-mode models still wrap their object in a markdown fence, optionally tagged json.
+FENCED = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.DOTALL | re.IGNORECASE)
 
 
 def post_json(url, key, body, headers=None):
@@ -244,8 +247,11 @@ def text_json(system, context, session, purpose):
         result = post_json(base + "/chat/completions", key, body, headers={"x-opencode-session": session})
         record_usage(span, result)
     try:
-        output = json.loads(result["choices"][0]["message"]["content"])
-    except (ValueError, KeyError, TypeError, IndexError):
+        content = result["choices"][0]["message"]["content"].strip()
+        if fenced := FENCED.fullmatch(content):
+            content = fenced.group(1)
+        output = json.loads(content)
+    except (ValueError, KeyError, TypeError, IndexError, AttributeError):
         output = None
     return output, {
         "model": model,

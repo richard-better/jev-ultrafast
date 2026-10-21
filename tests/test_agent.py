@@ -209,6 +209,21 @@ def test_toggle_button_pressed_state_reaches_the_model(monkeypatch):
     assert sent[0]["questions"]["click_target"]["criteria"]["1"]["pressed"] == "true"
 
 
+@pytest.mark.parametrize(
+    "content",
+    [
+        '```json\n{"text": "Zurich"}\n```',
+        '```JSON\n{"text": "Zurich"}\n```',
+        '  ```\n{"text": "Zurich"}\n```\n',
+        '```json {"text": "Zurich"} ```',
+    ],
+)
+def test_text_helper_accepts_a_fenced_json_object(monkeypatch, content):
+    monkeypatch.setenv("TEXT_MODEL_API_KEY", "test")
+    monkeypatch.setattr(model, "post_json", Mock(return_value={"choices": [{"message": {"content": content}}]}))
+    assert model.field_text({"goal": "Fly from Zurich"}, "run")[0] == "Zurich"
+
+
 def test_quoted_task_text_still_uses_the_llm(monkeypatch):
     monkeypatch.setenv("TEXT_MODEL_API_KEY", "test")
     post = Mock(return_value={"choices": [{"message": {"content": '{"text":"Zurich"}'}}]})
@@ -662,6 +677,7 @@ def test_flight_verification_rejects_wrong_trip(changed):
     "content", [
         "Thinking: Zurich", '{"text":null}', '{"text":"Zurich","extra":true}', '{"text":123}',
         '{"text":false}', '{"text":0}', '{}', json.dumps({"text": "a" * 2001}),
+        '```json\n{"text":null}\n```', 'Here you go:\n```json\n{"text":"Zurich"}\n```', "```json\n```", None,
     ]
 )
 def test_text_helper_rejects_invalid_values(runner, monkeypatch, content):
