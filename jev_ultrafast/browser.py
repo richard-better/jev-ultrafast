@@ -480,18 +480,12 @@ def browser_operation(request):
                   if (!e?.isConnected || e.matches(':disabled') || e.closest('[aria-disabled="true"],[inert]') ||
                       !cache.visible(e)) return null;
                   if (action.kind==='fill' && !cache.editable(e)) return null;
-                  const r=e.getBoundingClientRect();
-                  let x=r.x+r.width/2, y=r.y+r.height/2;
-                  if (!r.width || !r.height || x<0 || y<0 || x>=innerWidth || y>=innerHeight) return null;
-                  if (!cache.within(e,cache.hit(x,y))) {
-                    // A wrapped link's box centre sits on the text between its fragments; click the
-                    // centre of a visible fragment instead, the same fallback the snapshot uses.
-                    const f=[...e.getClientRects()].map(q=>[q.x+q.width/2,q.y+q.height/2,q.width,q.height])
-                      .find(([fx,fy,w,h])=>w>0 && h>0 && fx>=0 && fy>=0 && fx<innerWidth && fy<innerHeight &&
-                        cache.within(e,cache.hit(fx,fy)));
-                    if (!f) return null;
-                    x=f[0]; y=f[1];
-                  }
+                  const r=e.getBoundingClientRect(), cx=r.x+r.width/2, cy=r.y+r.height/2;
+                  if (!r.width || !r.height || cx<0 || cy<0 || cx>=innerWidth || cy>=innerHeight) return null;
+                  // The same point the snapshot offered: e's centre or a visible fragment of a wrapped link.
+                  const point=cache.point(e);
+                  if (!point) return null;
+                  const {x,y}=point;
                   if (action.kind==='select') {
                     const o=window.__jevFast.nodes.get(action.option_node);
                     if (e.tagName!=='SELECT' || o?.tagName!=='OPTION' || !o.isConnected || o.closest('select')!==e ||

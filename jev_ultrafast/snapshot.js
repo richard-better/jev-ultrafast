@@ -72,6 +72,19 @@
     if (e.hasAttribute('onclick') || e.tabIndex>=0) return 'button';
     return null;
   };
+  // Where a click reaches e, or null. Both the offer below and the act guard in browser.py use this, so
+  // what is offered is what can be hit. First e's own centre; then the centre of a visible fragment, since
+  // a link wrapped onto two lines has its box centre on the text between them.
+  cache.point=e=>{
+    const inView=(x,y)=>x>=0 && y>=0 && x<innerWidth && y<innerHeight;
+    const r=e.getBoundingClientRect(), x=r.x+r.width/2, y=r.y+r.height/2;
+    if (r.width>0 && r.height>0 && inView(x,y) && cache.within(e,cache.hit(x,y))) return {x,y};
+    for (const q of e.getClientRects()) {
+      const fx=q.x+q.width/2, fy=q.y+q.height/2;
+      if (q.width>0 && q.height>0 && inView(fx,fy) && cache.within(e,cache.hit(fx,fy))) return {x:fx,y:fy};
+    }
+    return null;
+  };
   cache.editable=e=>{
     const rname=role(e);
     return !e.readOnly && !e.closest('[aria-readonly="true"]') &&
@@ -101,19 +114,13 @@
     if (!safe(e) || !visible(e) || e.matches(':disabled') || e.closest('[aria-disabled="true"]')) continue;
     const r=e.getBoundingClientRect(), x=r.x+r.width/2, y=r.y+r.height/2, rname=role(e);
     if (!rname || r.width<=0 || r.height<=0 || x<0 || y<0 || x>=innerWidth || y>=innerHeight) continue;
-    // Offer a control only if the act guard in browser.py would accept it: the same test,
-    // `e.contains(document.elementFromPoint(point))`. Otherwise a control clipped by a scroll
-    // container, under a consent iframe or cookie banner, or laid out behind other content is
-    // offered, refused at act time ("Target changed or is covered"), and chosen again after
-    // every re-observe. A link that wraps onto two lines has its box centre on the text between
-    // its fragments, so the centre of each visible fragment is tried next; the act guard uses
-    // the same fallback, so what is offered is what can be hit. A covered control is dropped
-    // from the offer below, after the marker is built: occlusion is geometry, and the marker
-    // deliberately compares meaning and identity only.
-    const covered=!cache.within(e,cache.hit(x,y)) &&
-      ![...e.getClientRects()].some(q => { const fx=q.x+q.width/2, fy=q.y+q.height/2;
-        return q.width>0 && q.height>0 && fx>=0 && fy>=0 && fx<innerWidth && fy<innerHeight &&
-          cache.within(e,cache.hit(fx,fy)); });
+    // Offer a control only if the act guard in browser.py would accept it: the same cache.point.
+    // Otherwise a control clipped by a scroll container, under a consent iframe or cookie banner, or
+    // laid out behind other content is offered, refused at act time ("Target changed or is covered"),
+    // and chosen again after every re-observe. A covered control is dropped from the offer below,
+    // after the marker is built: occlusion is geometry, and the marker deliberately compares meaning
+    // and identity only.
+    const covered=!cache.point(e);
     if (rname==='gridcell' && e.querySelector('button,[role="button"]')) continue;
     const base={node:identity(e),role:rname,label:name(e)||rname,
       rect:{x:r.x,y:r.y,w:r.width,h:r.height}};
