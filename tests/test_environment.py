@@ -54,6 +54,41 @@ def test_an_exported_entry_still_loads(env):
     assert "export TEXT_MODEL_REASONING" not in loaded
 
 
+def test_export_may_be_followed_by_any_whitespace(env):
+    loaded = env("export\tTEXT_MODEL=deepseek-chat\nexport   TEXT_MODEL_REASONING=none")
+    assert loaded["TEXT_MODEL"] == "deepseek-chat"
+    assert loaded["TEXT_MODEL_REASONING"] == "none"
+
+
+def test_export_is_only_a_prefix_when_whitespace_follows_it(env):
+    assert env("exporter=yes")["exporter"] == "yes"
+
+
+def test_a_comment_after_export_is_skipped(env):
+    loaded = env("export #TYPESAFE_API_KEY=old")
+    assert [key for key in loaded if "TYPESAFE_API_KEY" in key] == []
+
+
+def test_an_inline_comment_is_not_part_of_an_unquoted_value(env):
+    """`KEY=sk-xyz # note` sent the comment to the provider as part of the key."""
+    assert env("TEXT_MODEL_API_KEY=sk-xyz # rotate monthly")["TEXT_MODEL_API_KEY"] == "sk-xyz"
+    assert env("TEXT_MODEL=deepseek-chat\t# cheaper")["TEXT_MODEL"] == "deepseek-chat"
+
+
+def test_an_inline_comment_after_a_quoted_value_is_dropped(env):
+    loaded = env('DOUBLE="a b"  # c\nSINGLE=\'a b\' # c')
+    assert (loaded["DOUBLE"], loaded["SINGLE"]) == ("a b", "a b")
+
+
+def test_a_hash_inside_quotes_is_part_of_the_value(env):
+    loaded = env('DOUBLE="hunter # 2"\nSINGLE=\'x #y\' # z')
+    assert (loaded["DOUBLE"], loaded["SINGLE"]) == ("hunter # 2", "x #y")
+
+
+def test_an_apostrophe_in_an_unquoted_value_does_not_hide_a_comment(env):
+    assert env("GOAL=it's late # note")["GOAL"] == "it's late"
+
+
 def test_comments_and_blank_lines_are_skipped(env):
     loaded = env("# Required for TYPE_TEXT.\n\n   \nTEXT_MODEL_API_KEY=key\n")
     assert loaded["TEXT_MODEL_API_KEY"] == "key"
