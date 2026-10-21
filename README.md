@@ -105,7 +105,7 @@ uv run --env-file .env python examples/run.py \
 - **Keep hidden tabs rendering.** Focus emulation prevents background animation throttling without switching Chrome's visible tab.
 - **Send visible text.** Offscreen article bodies and footers do not fill the model context.
 - **Target visible nested scrolling.** Sampled scrollable feeds and sidebars become named, freshness-checked actions.
-- **Reuse an interrupted text request.** A generated value survives a stale-page retry only if the entire text-helper input is unchanged.
+- **Reuse an interrupted text request.** A generated value survives a stale-page retry only if the entire text-helper input is unchanged and it is for the same field.
 
 Every executed target is resolved from an observed node. The executor rechecks page freshness and click occlusion. Model output never becomes selectors, coordinates, shell commands, or executable JavaScript. Text-helper output must parse as a small JSON object before typing.
 
