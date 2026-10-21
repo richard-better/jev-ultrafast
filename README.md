@@ -28,7 +28,7 @@ Every observation produces a new element table:
 ...
 ```
 
-The operations are `CLICK`, `TYPE_TEXT`, `SELECT`, `SCROLL_UP`, `SCROLL_DOWN`, `WAIT`, `DONE`, and `BLOCKED`, plus named nested-region scroll operations when a visible scroll container is sampled. Only supported operations and targets are offered.
+The operations are `CLICK`, `TYPE_TEXT`, `PRESS_ENTER`, `SELECT`, `SCROLL_UP`, `SCROLL_DOWN`, `WAIT`, `DONE`, and `BLOCKED`, plus named nested-region scroll operations when a visible scroll container is sampled. Only supported operations and targets are offered. `PRESS_ENTER` clicks an observed editable field and, once focus settles on it, presses Enter: chat boxes without a send button and forms submitted from the keyboard. Its target head reuses the editable fields, so it adds no entries to the element table. If the click moves focus elsewhere, only the click is logged; an interrupted Enter is unknown execution and is never retried.
 
 ```text
                       one TypeSafe request
@@ -36,6 +36,7 @@ The operations are `CLICK`, `TYPE_TEXT`, `SELECT`, `SCROLL_UP`, `SCROLL_DOWN`, `
 page → element table → operation                 │
                      │ click_target              │
                      │ type_text_target          │
+                     │ press_enter_target        │
                      │ select_target, if present │
                      └─────────────┬─────────────┘
                          use the matching target
@@ -188,7 +189,7 @@ uv build
 Tests are offline. `uv run python scripts/check_guards.py` checks real controls in a local browser without model calls. `uv run python scripts/check_fill_focus.py` checks text entry when click or keyboard handlers change the focused field. `uv run python scripts/check_hittest.py` checks that clipped and covered controls are not offered, that a wrapped link is clicked on a visible fragment, and that styled radios and checkboxes are chosen through their labels. `uv run python scripts/check_toggle_menu.py` checks that a transparent checkbox laid over a menu icon is offered and clicked while it is the topmost element, including in an open shadow root, and refused when covered. Live examples and recording scripts make paid API calls. `scripts/record_flights.py [--task cheapest] <new-folder>` captures original browser timestamps (with `JEV_URL_MAP` set, the run can use the map) and closes its tab afterwards; pass `--keep-open` to inspect the page, for example after an interrupted action; `scripts/render_demo.py <recording-folder>` renders that verified run at 1× and crops out the Google account strip. `scripts/record_flights_url.py <new-folder>` records the same task opened by a deep link, with no model calls, and `render_demo.py` renders it to `docs/url-demo.*`. `scripts/render_side_by_side.py <without-map-take> <with-map-take>` renders two cheapest-flight takes on one clock to `docs/cheapest-side-by-side.*`. `scripts/summarize_recording.py <chosen-take> [<other-takes>...]` writes `docs/flights-measurement.json` from the chosen recording and lists every take. Credentials and raw traces stay ignored.
 
 `uv run python scripts/check_interrupted_actions.py` checks lost acknowledgements
-after real clicks, text input, and dropdown selection on a local fixture, without
+after real clicks, text input, dropdown selection, and Enter on a local fixture, without
 model calls. Each case checks the actual DOM event count before and after a retry.
 
 `uv run python scripts/check_consent.py` serves consent banners from local origins (inline, blocking overlay, below the fold, same-origin, cross-origin and cross-site iframes, open and closed shadow roots as bars and blocking overlays) and checks that each banner's "Reject all" is offered, dismisses it, and leaves the page usable, without model calls. Shapes that do not work yet are listed as known gaps. `--live` also runs the real agent on each shape with paid model calls.

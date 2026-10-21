@@ -100,3 +100,62 @@ def test_focused_fill_inserts_the_requested_text_once(monkeypatch):
     assert calls.call_args.kwargs == {
         "session_id": "test", "_response_timeout": browser.CDP_RESPONSE_TIMEOUT, "text": "replacement",
     }
+
+
+
+@pytest.mark.parametrize("focused", [False, None, "exception"])
+def test_enter_whose_click_moved_focus_reports_a_click_without_a_key(monkeypatch, focused):
+    instance, calls = focus_run(monkeypatch, focused, after_select_all=False)
+
+    assert instance.act({"id": "e1", "kind": "press", "node": 1}, {}) == {"executed": "e1", "typed": False}
+
+    methods = [call.args[0] for call in calls.call_args_list]
+    assert methods.count("Input.dispatchMouseEvent") == 2
+    assert "Input.dispatchKeyEvent" not in methods
+
+
+def test_enter_goes_once_to_the_claimed_field_after_focus_settles(monkeypatch):
+    evaluations = iter([{"x": 40, "y": 40}, None, True])
+    expressions = []
+
+    def cdp(method, **params):
+        if method == "Runtime.evaluate":
+            expressions.append(params["expression"])
+            return {"result": {"value": next(evaluations)}}
+        return {}
+
+    calls = Mock(side_effect=cdp)
+    monkeypatch.setattr(browser, "cdp", calls)
+    result = browser.browser_operation({
+        "operation": "act", "session": "test", "action": {"id": "e1", "kind": "press", "node": 1},
+    })
+
+    assert result == {"executed": "e1"}
+    assert [call.args[0] for call in calls.call_args_list] == [
+        "Runtime.evaluate", "Input.dispatchMouseEvent", "Input.dispatchMouseEvent",
+        "Runtime.evaluate", "Runtime.evaluate", "Input.dispatchKeyEvent", "Input.dispatchKeyEvent",
+    ]
+    # The target must be an editable field, focus settles first, then the field is claimed.
+    assert "['fill','press'].includes(action.kind) && !cache.editable(e)" in expressions[0]
+    assert expressions[1] == browser.FOCUS_SETTLED
+    assert "cache.typing=e" in expressions[2]
+    down, up = calls.call_args_list[-2:]
+    assert (down.kwargs["type"], down.kwargs["key"], down.kwargs["text"]) == ("keyDown", "Enter", "\r")
+    assert (up.kwargs["type"], up.kwargs["key"]) == ("keyUp", "Enter")
+
+
+def test_interrupted_enter_is_not_retried_as_stale(monkeypatch):
+    evaluations = iter([{"x": 40, "y": 40}, None, True])
+
+    def cdp(method, **params):
+        if method == "Runtime.evaluate":
+            return {"result": {"value": next(evaluations)}}
+        if method == "Input.dispatchKeyEvent":
+            raise TimeoutError("Enter reply lost")
+        return {}
+
+    monkeypatch.setattr(browser, "cdp", Mock(side_effect=cdp))
+    with pytest.raises(TimeoutError):
+        browser.browser_operation({
+            "operation": "act", "session": "test", "action": {"id": "e1", "kind": "press", "node": 1},
+        })
