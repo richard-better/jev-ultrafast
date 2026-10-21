@@ -9,7 +9,16 @@ function inspector() {
   const document = {
     querySelector: () => ({ content: 'offline-token' }),
     getElementById: id => {
-      if (!nodes.has(id)) nodes.set(id, { addEventListener() {} });
+      if (!nodes.has(id)) {
+        const children = new Map();
+        nodes.set(id, {
+          addEventListener() {},
+          querySelector: selector => {
+            if (!children.has(selector)) children.set(selector, {});
+            return children.get(selector);
+          },
+        });
+      }
       return nodes.get(id);
     },
   };
