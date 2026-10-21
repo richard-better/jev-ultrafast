@@ -13,6 +13,9 @@ from jev_ultrafast.browser import Browser
 #  - the wrapped link spans two lines, so its bounding-box centre lands on the text between
 #    its fragments while each fragment is visibly clickable.
 #  - "Continue" is an ordinary button and must keep working.
+#  - styled choices: a radio clipped to 1px and a transparent checkbox laid under its card are
+#    clicked through their labels; a styled radio whose label is under the banner, and one whose
+#    label has a link at its centre, are not offered.
 HTML = """<!doctype html><title>Hit-test checks</title>
 <style>
 body{margin:0;font:20px/1.6 serif}
@@ -22,6 +25,11 @@ body{margin:0;font:20px/1.6 serif}
 #banner{position:fixed;left:0;right:0;top:520px;height:120px;background:#333;color:#fff}
 #hidden{position:absolute;left:40px;top:560px}
 #para{width:300px;margin:0 0 0 400px}
+#choices{position:absolute;left:760px;top:20px;width:300px}
+.card{position:relative;display:block;height:60px;margin:0 0 10px;background:#f4f4f4}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
+.under{position:absolute;left:10px;top:10px;margin:0;opacity:0;z-index:-1}
+#buried-card{position:absolute;left:760px;top:540px;width:300px}
 </style>
 <nav id="side"><a href="#a">Overview</a><a href="#b">Models</a><a href="#c">Limits</a>
 <a href="#p" id="pricing" onclick="window.clickedPricing=1;return false">Pricing</a></nav>
@@ -31,6 +39,15 @@ body{margin:0;font:20px/1.6 serif}
 programming language</a> with a large standard library and many users.</p>
 <button id="go" onclick="window.clickedGo=(window.clickedGo||0)+1">Continue</button>
 </div>
+<div id="choices">
+<label class="card"><input type="radio" name="plan" id="basic" class="sr-only"
+  onchange="window.basicChanges=(window.basicChanges||0)+1"> Basic plan</label>
+<label class="card"><input type="checkbox" id="insure" class="under"
+  onchange="window.insureChanges=(window.insureChanges||0)+1"> Add insurance</label>
+<label class="card"><input type="radio" name="plan" class="sr-only"> Pro plan
+  <a href="#terms" style="position:absolute;left:0;top:0;width:100%;height:100%">terms</a></label>
+</div>
+<label class="card" id="buried-card"><input type="radio" name="plan" class="sr-only"> Buried plan</label>
 <button id="hidden" onclick="window.clickedHidden=1">Accept all</button>
 <div id="banner">This banner covers the page</div>
 """
@@ -81,6 +98,31 @@ def main():
         browser.act(go, page)
         assert browser.evaluate("window.clickedGo") == 1
         passed.append("ordinary button clicked")
+
+        # Preconditions: each styled input is covered at its own centre, so the label is what is clicked.
+        covered = browser.evaluate("""(() => ['basic','insure'].map(id => {
+          const e = document.getElementById(id), r = e.getBoundingClientRect();
+          return e.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2));
+        }))()""")
+        assert covered == [False, False], f"Fixture layout changed: {covered}"
+        page = browser.observe(screenshot=False)
+        labels = [a["label"] for a in page["actions"]]
+        assert {"Basic plan", "Add insurance"} <= set(labels), f"Styled choices must be offered: {labels}"
+        passed.append("styled radio and checkbox covered by their own labels are offered")
+        assert "Buried plan" not in labels, f"A styled choice whose label is covered must not be offered: {labels}"
+        passed.append("styled choice whose label is under a banner not offered")
+        assert not any(label.startswith("Pro plan") for label in labels), labels
+        assert "terms" in labels, f"The link inside the label stays offered on its own: {labels}"
+        passed.append("styled choice whose label centre holds a link not offered")
+
+        basic = next(a for a in page["actions"] if a["label"] == "Basic plan")
+        browser.act(basic, page)
+        assert browser.evaluate("[document.getElementById('basic').checked, window.basicChanges]") == [True, 1]
+        page = browser.observe(screenshot=False)
+        insure = next(a for a in page["actions"] if a["label"] == "Add insurance")
+        browser.act(insure, page)
+        assert browser.evaluate("[document.getElementById('insure').checked, window.insureChanges]") == [True, 1]
+        passed.append("styled radio and checkbox chosen once through their labels")
     finally:
         browser.close()
     for item in passed:
