@@ -482,7 +482,8 @@ def browser_operation(request):
                   if (action.kind==='fill' && !cache.editable(e)) return null;
                   const r=e.getBoundingClientRect(), cx=r.x+r.width/2, cy=r.y+r.height/2;
                   if (!r.width || !r.height || cx<0 || cy<0 || cx>=innerWidth || cy>=innerHeight) return null;
-                  // The same point the snapshot offered: e's centre or a visible fragment of a wrapped link.
+                  // The same point the snapshot offered: e's centre, a visible fragment of a wrapped
+                  // link, or the label of a styled checkbox or radio that its label covers.
                   const point=cache.point(e);
                   if (!point) return null;
                   const {x,y}=point;

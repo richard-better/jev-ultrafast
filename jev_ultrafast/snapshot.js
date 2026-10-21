@@ -20,14 +20,14 @@
   cache.within=(e,n)=>{ for (; n; n=n.parentNode || n.host) if (n===e) return true; return false; };
   cache.active=()=>{ let a=document.activeElement; while (a?.shadowRoot?.activeElement) a=a.shadowRoot.activeElement; return a; };
   const safe = e => !['password','file','hidden'].includes(e.type);
-  // Menus often use a transparent checkbox laid over an icon (the CSS checkbox hack). It is the real
-  // hit target, so it counts as visible while it is the topmost element at its own centre.
-  const toggleOnTop = e => e.matches('input[type=checkbox],input[type=radio]') &&
-    e.checkVisibility({checkVisibilityCSS:true}) && (r => r.width>0 && r.height>0 &&
-      cache.within(e,cache.hit(r.x+r.width/2,r.y+r.height/2)))(e.getBoundingClientRect());
+  const choice = e => e.matches('input[type=checkbox],input[type=radio]');
+  // Menus often use a transparent checkbox laid over an icon (the CSS checkbox hack), and styled choices
+  // hide a transparent input under their label. Such a checkbox or radio counts as visible while a click
+  // can reach it: it is the topmost element at its own centre, or it has a usable label (cache.point).
+  const transparentChoice = e => choice(e) && e.checkVisibility({checkVisibilityCSS:true}) && !!cache.point(e);
   // The executor rechecks targets with this same rule, so what is offered stays clickable.
   const visible = cache.visible = e => !e.closest('[aria-hidden="true"],[inert]') &&
-    (e.checkVisibility({checkOpacity:true,checkVisibilityCSS:true}) || toggleOnTop(e));
+    (e.checkVisibility({checkOpacity:true,checkVisibilityCSS:true}) || transparentChoice(e));
   const name = (e,seen=new Set()) => {
     if (!e || seen.has(e)) return '';
     seen.add(e);
@@ -72,9 +72,14 @@
     if (e.hasAttribute('onclick') || e.tabIndex>=0) return 'button';
     return null;
   };
+  // Controls inside a label that would take a click aimed at the label instead of its checkbox or radio.
+  const clickable='a[href],button,input,textarea,select,summary,[contenteditable="true"],'+
+    roles.map(role=>'[role="'+role+'"]').join(',');
   // Where a click reaches e, or null. Both the offer below and the act guard in browser.py use this, so
   // what is offered is what can be hit. First e's own centre; then the centre of a visible fragment, since
-  // a link wrapped onto two lines has its box centre on the text between them.
+  // a link wrapped onto two lines has its box centre on the text between them; then, for a styled
+  // checkbox or radio that its own label covers or that is clipped away, the centre of a usable label,
+  // because clicking a label toggles its control.
   cache.point=e=>{
     const inView=(x,y)=>x>=0 && y>=0 && x<innerWidth && y<innerHeight;
     const r=e.getBoundingClientRect(), x=r.x+r.width/2, y=r.y+r.height/2;
@@ -82,6 +87,17 @@
     for (const q of e.getClientRects()) {
       const fx=q.x+q.width/2, fy=q.y+q.height/2;
       if (q.width>0 && q.height>0 && inView(fx,fy) && cache.within(e,cache.hit(fx,fy))) return {x:fx,y:fy};
+    }
+    if (!e.matches('input[type=checkbox],input[type=radio]')) return null;
+    for (const label of e.labels||[]) {
+      if (!cache.visible(label)) continue;
+      const q=label.getBoundingClientRect(), lx=q.x+q.width/2, ly=q.y+q.height/2;
+      if (!(q.width>0 && q.height>0 && inView(lx,ly))) continue;
+      const hit=cache.hit(lx,ly);
+      if (!hit || !cache.within(label,hit)) continue;
+      const inner=hit.closest(clickable);
+      if (inner && inner!==e && cache.within(label,inner)) continue;
+      return {x:lx,y:ly};
     }
     return null;
   };
