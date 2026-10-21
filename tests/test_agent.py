@@ -455,6 +455,64 @@ def test_stale_text_cache_does_not_cross_navigation(runner, monkeypatch):
     assert runner.pending_text is None
 
 
+def frame_page(frame_markers):
+    p = page()
+    p["actions"] = [
+        {"id": "e1", "kind": "fill", "label": "Name", "role": "textbox", "value": "", "node": 10},
+        {"id": "e2", "kind": "fill", "label": "Name", "role": "textbox", "value": "", "node": 3,
+         "frame": "F1", "frame_node": 40},
+        {"id": "e3", "kind": "fill", "label": "Name", "role": "textbox", "value": "", "node": 3,
+         "frame": "F2", "frame_node": 41},
+        {"id": "wait", "kind": "wait", "label": "Wait"},
+    ]
+    p["frames"] = [{"id": frame, "marker": marker} for frame, marker in frame_markers.items()]
+    p["fingerprint"] = fingerprint(p)
+    return p
+
+
+def retry_fill(runner, monkeypatch, first, second, second_page=None):
+    """Fill `first`, reject it as stale before input, then fill `second`. Return the typed values."""
+    helper = Mock(side_effect=[("John", {"model": "test", "latency_ms": 10}),
+                               ("Jane", {"model": "test", "latency_ms": 10})])
+    monkeypatch.setattr(loop, "field_text", helper)
+    runner.state["browser"].act.side_effect = [StalePage("Changed before input"), {"executed": second}]
+    runner.state["decision"] = decision(first)
+    with pytest.raises(StalePage):
+        runner.command("act", {"fingerprint": runner.state["page"]["fingerprint"]})
+    if second_page:
+        runner.state["page"] = second_page
+    runner.state["decision"] = decision(second)
+    runner.command("act", {"fingerprint": runner.state["page"]["fingerprint"]})
+    assert runner.pending_text is None
+    return [c.kwargs["text"] for c in runner.state["browser"].act.call_args_list]
+
+
+def test_stale_text_cache_does_not_cross_frames_with_the_same_node_number(runner, monkeypatch):
+    # Frame nodes are numbered per frame: both fields are node 3, with identical helper input.
+    p = runner.state["page"] = frame_page({"F1": [1.0], "F2": [1.0]})
+    assert model.field_context("g", p["actions"][1], p, []) == model.field_context("g", p["actions"][2], p, [])
+    assert retry_fill(runner, monkeypatch, "e2", "e3") == ["John", "Jane"]
+
+
+def test_stale_text_cache_follows_the_frame_document_not_the_top_page(runner, monkeypatch):
+    runner.state["page"] = frame_page({"F1": [1.0]})
+    navigated = frame_page({"F1": [2.0]})  # Only the frame navigated; the top marker is unchanged.
+    assert navigated["marker"] == runner.state["page"]["marker"]
+    assert retry_fill(runner, monkeypatch, "e2", "e2", navigated) == ["John", "Jane"]
+
+
+def test_stale_text_cache_survives_a_top_page_change_inside_an_unchanged_frame(runner, monkeypatch):
+    runner.state["page"] = frame_page({"F1": [1.0]})
+    scrolled = frame_page({"F1": [1.0]})
+    scrolled["marker"] = [1234.0, "https://example.test/", 0, 500, 1280, 800, None, None, None, None, 0.0]
+    assert retry_fill(runner, monkeypatch, "e2", "e2", scrolled) == ["John", "John"]
+
+
+def test_stale_text_cache_does_not_cross_from_a_frame_field_to_the_top_page(runner, monkeypatch):
+    runner.state["page"] = frame_page({"F1": [1234.0]})
+    assert retry_fill(runner, monkeypatch, "e2", "e1") == ["John", "Jane"]
+
+
 def test_loading_waits_do_not_trigger_no_progress_stop(runner):
     for _ in range(5):
         runner.state["decision"] = decision("wait")
