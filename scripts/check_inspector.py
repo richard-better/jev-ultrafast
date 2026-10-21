@@ -30,6 +30,7 @@ const cases = [
   ['reset', ready, false],
 ];
 window.exportChecks = [];
+try {
 for (const [name, sample, enabled] of cases) {
   state = sample;
   render();
@@ -40,7 +41,11 @@ for (const [name, sample, enabled] of cases) {
   delete expected.page.screenshot;
   window.exportChecks.push({name, enabled, disabled:$('download').disabled, saved, expected});
 }
-window.exportChecksDone = true;
+} catch (error) {
+  window.exportChecksError = String(error);
+} finally {
+  window.exportChecksDone = true;
+}
 """
 
 
@@ -63,8 +68,10 @@ def main():
         deadline = time.monotonic() + 5
         while not browser.evaluate("window.exportChecksDone === true") and time.monotonic() < deadline:
             time.sleep(0.02)
-        checks = browser.evaluate("window.exportChecks")
         assert browser.evaluate("window.exportChecksDone === true"), "Inspector checks did not finish"
+        error = browser.evaluate("window.exportChecksError || null")
+        assert not error, f"Inspector checks threw: {error}"
+        checks = browser.evaluate("window.exportChecks")
         failures = [check["name"] for check in checks
                     if check["disabled"] == check["enabled"] or
                     check["saved"] != (check["expected"] if check["enabled"] else None)]
