@@ -1,9 +1,7 @@
 """Local-browser freshness/execution regressions. No live model calls or external websites."""
 
-import time
-
-
 import json
+import time
 from unittest.mock import patch
 from urllib.parse import quote
 

@@ -157,6 +157,8 @@ Tests are offline. `uv run python scripts/check_guards.py` checks real controls 
 after real clicks, text input, and dropdown selection on a local fixture, without
 model calls. Each case checks the actual DOM event count before and after a retry.
 
+`uv run python scripts/check_inspector.py` checks in a local browser, with simulated state and no model calls, that the inspector can export a trace once Jev has made a decision, even before any action has executed.
+
 `uv run python scripts/check_selects.py` checks native dropdown identity and freshness in a local browser, including duplicate values and stale options, without model calls.
 
 `uv run python scripts/check_navigation.py` checks delayed links, HTTP and same-document redirects, named targets, cancelled navigation, and fast-path exceptions in local browser fixtures without model calls. The link wait is a bounded opportunity for navigation to begin, not proof that a destination has finished loading or that the goal is complete; final outcomes still require independent verification.
