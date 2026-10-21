@@ -3,6 +3,7 @@
 import json
 import math
 import os
+import re
 import time
 
 import httpx
@@ -14,6 +15,8 @@ STATES = ("checked", "selected", "expanded", "pressed")
 # Failures that can clear on a second try. A bad URL, a redirect loop or an
 # undecodable body fails the same way every time.
 TRANSIENT_ERRORS = (httpx.TimeoutException, httpx.NetworkError, httpx.RemoteProtocolError)
+# Some JSON-mode models still wrap their object in a markdown fence, optionally tagged json.
+FENCED = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.DOTALL | re.IGNORECASE)
 RETRY_STATUSES = {429, 503, 504, 529}
 
 
@@ -232,11 +235,14 @@ def field_text(context):
         },
     )
     try:
-        output = json.loads(result["choices"][0]["message"]["content"])
+        content = result["choices"][0]["message"]["content"].strip()
+        if fenced := FENCED.fullmatch(content):
+            content = fenced.group(1)
+        output = json.loads(content)
         value = output["text"]
         if set(output) != {"text"} or not isinstance(value, str) or len(value) > 2000:
             raise ValueError()
-    except (ValueError, KeyError, TypeError, IndexError):
+    except (ValueError, KeyError, TypeError, IndexError, AttributeError):
         raise ValueError("Text helper returned no valid field value; nothing typed.") from None
     return value, {
         "model": model,
