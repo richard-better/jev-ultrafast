@@ -107,7 +107,7 @@ uv run --env-file .env python examples/run.py \
 - **Keep hidden tabs rendering.** Focus emulation prevents background animation throttling without switching Chrome's visible tab.
 - **Send visible text.** Offscreen article bodies and footers do not fill the model context.
 - **Target visible nested scrolling.** Sampled scrollable feeds and sidebars become named, freshness-checked actions.
-- **Reuse an interrupted text request.** A generated value survives a stale-page retry only if the entire text-helper input is unchanged.
+- **Reuse an interrupted text request.** A generated value survives a stale-page retry only if the entire text-helper input is unchanged and it is for the same field.
 
 Every executed target is resolved from an observed node. The executor rechecks page freshness and click occlusion. Model output never becomes selectors, coordinates, shell commands, or executable JavaScript. Text-helper output must parse as a small JSON object before typing.
 
@@ -188,6 +188,8 @@ model calls. Each case checks the actual DOM event count before and after a retr
 `uv run python scripts/check_consent.py` serves consent banners from local origins (inline, blocking overlay, below the fold, same-origin, cross-origin and cross-site iframes, open and closed shadow roots as bars and blocking overlays) and checks that each banner's "Reject all" is offered, dismisses it, and leaves the page usable, without model calls. Shapes that do not work yet are listed as known gaps. `--live` also runs the real agent on each shape with paid model calls.
 
 `uv run python scripts/check_frames.py` checks controls inside same-process and cross-site iframes without model calls: input reaches the frame's elements, a covered frame is never clicked through, and a frame that changed or navigated after observation is refused before input.
+
+`uv run python scripts/check_inspector.py` checks in a local browser, with simulated state and no model calls, that the inspector can export a trace once Jev has made a decision, even before any action has executed.
 
 `uv run python scripts/check_selects.py` checks native dropdown identity and freshness in a local browser, including duplicate values and stale options, without model calls.
 

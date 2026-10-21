@@ -8,6 +8,7 @@ import pytest
 from jev_ultrafast import agent as loop
 from jev_ultrafast import model
 from jev_ultrafast import url_map as maps
+from jev_ultrafast.browser import StalePage
 from jev_ultrafast.model import action_space
 
 ENTRY = {
@@ -101,6 +102,8 @@ def test_an_entry_is_its_own_operation():
 
 @pytest.mark.parametrize(("content", "accepted"), [
     (json.dumps({"parameters": VALUES}), True),
+    ("```json\n" + json.dumps({"parameters": VALUES}) + "\n```", True),
+    ("```\n" + json.dumps({"parameters": None}) + "\n```", False),
     (json.dumps({"parameters": None}), False),
     (json.dumps({"parameters": VALUES, "url": "https://x"}), False),
     ("https://shop.example/search?q=lamp", False),
@@ -145,6 +148,23 @@ def test_a_chosen_shortcut_opens_the_validated_url(shop_runner, monkeypatch):
     assert (entry_["kind"], entry_["text"], entry_["execution"], entry_["page_changed"]) == (
         "shortcut", expected, "confirmed", True)
     assert shop_runner.state["text_calls"][-1]["parameters"] == VALUES
+
+
+def test_a_stale_shortcut_retry_reuses_the_built_url_only_for_the_same_entry(shop_runner, monkeypatch):
+    fill = Mock(return_value=("lamp", {"model": "t", "latency_ms": 5}))
+    parameters = Mock(return_value=(VALUES, {"model": "t", "latency_ms": 5}))
+    monkeypatch.setattr(loop, "field_text", fill)
+    monkeypatch.setattr(loop, "shortcut_parameters", parameters)
+    browser, decision = shop_runner.state["browser"], shop_runner.state["decision"]
+    browser.act.side_effect = [StalePage("Changed before input"), {"executed": "open_shop_search"}]
+    with pytest.raises(StalePage):
+        shop_runner.command("act", {"fingerprint": "home"})
+    shop_runner.state["decision"] = decision
+    shop_runner.command("act", {"fingerprint": "home"})
+    assert parameters.call_count == 1
+    assert browser.act.call_args_list[0].kwargs == browser.act.call_args_list[1].kwargs
+    assert shop_runner.pending_text is None
+    fill.assert_not_called()
 
 
 def test_invalid_shortcut_parameters_open_nothing_and_are_logged(shop_runner, monkeypatch):

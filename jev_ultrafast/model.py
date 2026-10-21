@@ -3,6 +3,7 @@
 import json
 import math
 import os
+import re
 import time
 
 import httpx
@@ -16,6 +17,19 @@ STATES = ("checked", "selected", "expanded", "pressed")
 # Failures that can clear on a second try. A bad URL, a redirect loop or an
 # undecodable body fails the same way every time.
 TRANSIENT_ERRORS = (httpx.TimeoutException, httpx.NetworkError, httpx.RemoteProtocolError)
+RETRY_STATUSES = {429, 503, 504, 529}
+# Some JSON-mode models still wrap their object in a markdown fence, optionally tagged json.
+FENCED = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.DOTALL | re.IGNORECASE)
+
+
+def transient_error_body(error):
+    """An in-body error that reports a rate limit, overload or gateway timeout."""
+    if not isinstance(error, dict):
+        return False
+    code = error.get("code")
+    if isinstance(code, str) and code.isdigit():
+        code = int(code)
+    return code in RETRY_STATUSES or "overloaded" in str(error.get("type", "")).lower()
 
 
 def post_json(url, key, body, headers=None):
@@ -27,19 +41,31 @@ def post_json(url, key, body, headers=None):
                 tracing.wait("retry", 0.5 * 2**attempt)
                 continue
             raise RuntimeError("Model connection failed; no action executed.") from None
-        if response.status_code in {429, 529, 503} and attempt < 2:
+        if response.status_code in RETRY_STATUSES and attempt < 2:
             tracing.wait("retry", 0.5 * 2**attempt)
             continue
         if response.is_error:
             detail = " ".join(response.text.split())[:300]
             raise RuntimeError(f"Model provider returned HTTP {response.status_code}; no action executed. {detail}")
         try:
-            return response.json()
+            data = response.json()
         except ValueError:
             # A proxy or captive portal answering 200 with HTML parses as a ValueError, which
             # the demo reports as a plain 400. Without this the caller is shown a parser
             # message that says nothing about whether the browser was touched.
             raise RuntimeError("Model provider returned a non-JSON response; no action executed.") from None
+        # Some providers and routers answer 200 and report the failure in the body.
+        error = data.get("error") if isinstance(data, dict) else None
+        if error:
+            if transient_error_body(error) and attempt < 2:
+                tracing.wait("retry", 0.5 * 2**attempt)
+                continue
+            message = error.get("message", error) if isinstance(error, dict) else error
+            if not isinstance(message, str):
+                message = json.dumps(message)
+            detail = " ".join(message.split())[:300]
+            raise RuntimeError(f"Model provider returned an error; no action executed. {detail}")
+        return data
     raise RuntimeError("Model unavailable")
 
 
@@ -244,8 +270,11 @@ def text_json(system, context, session, purpose):
         result = post_json(base + "/chat/completions", key, body, headers={"x-opencode-session": session})
         record_usage(span, result)
     try:
-        output = json.loads(result["choices"][0]["message"]["content"])
-    except (ValueError, KeyError, TypeError, IndexError):
+        content = result["choices"][0]["message"]["content"].strip()
+        if fenced := FENCED.fullmatch(content):
+            content = fenced.group(1)
+        output = json.loads(content)
+    except (ValueError, KeyError, TypeError, IndexError, AttributeError):
         output = None
     return output, {
         "model": model,

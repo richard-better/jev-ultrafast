@@ -24,6 +24,9 @@ def page():
             {"id": "e3", "kind": "click", "label": "Go", "role": "button", "value": "", "node": 20},
             {"id": "wait", "kind": "wait", "label": "Wait"},
         ],
+        # marker[0] is performance.timeOrigin: stable within one document,
+        # fresh after every full navigation.
+        "marker": [1234.0, "https://example.test/", 0, 0, 1280, 800, None, None, None, None, 0.0],
     }
     state["fingerprint"] = fingerprint(state)
     return state
@@ -209,6 +212,21 @@ def test_toggle_button_pressed_state_reaches_the_model(monkeypatch):
     assert sent[0]["questions"]["click_target"]["criteria"]["1"]["pressed"] == "true"
 
 
+@pytest.mark.parametrize(
+    "content",
+    [
+        '```json\n{"text": "Zurich"}\n```',
+        '```JSON\n{"text": "Zurich"}\n```',
+        '  ```\n{"text": "Zurich"}\n```\n',
+        '```json {"text": "Zurich"} ```',
+    ],
+)
+def test_text_helper_accepts_a_fenced_json_object(monkeypatch, content):
+    monkeypatch.setenv("TEXT_MODEL_API_KEY", "test")
+    monkeypatch.setattr(model, "post_json", Mock(return_value={"choices": [{"message": {"content": content}}]}))
+    assert model.field_text({"goal": "Fly from Zurich"}, "run")[0] == "Zurich"
+
+
 def test_quoted_task_text_still_uses_the_llm(monkeypatch):
     monkeypatch.setenv("TEXT_MODEL_API_KEY", "test")
     post = Mock(return_value={"choices": [{"message": {"content": '{"text":"Zurich"}'}}]})
@@ -388,6 +406,126 @@ def test_changed_field_context_does_not_reuse_generated_text(runner, monkeypatch
     runner.state["decision"] = decision()
     runner.command("act", {"fingerprint": runner.state["page"]["fingerprint"]})
     assert helper.call_count == 2
+
+
+def test_stale_text_cache_does_not_cross_same_labeled_fields(runner, monkeypatch):
+    """A cached value from a stale fill on one field must not be typed into a
+    distinct same-labeled field whose helper input is byte-identical (#191)."""
+    runner.state["page"]["actions"] = [
+        {"id": "e1", "kind": "fill", "label": "Name", "role": "textbox", "value": "", "node": 10},
+        {"id": "e2", "kind": "fill", "label": "Name", "role": "textbox", "value": "", "node": 20},
+        {"id": "wait", "kind": "wait", "label": "Wait"},
+    ]
+    ctx1 = model.field_context("Find a book", runner.state["page"]["actions"][0], runner.state["page"], [])
+    ctx2 = model.field_context("Find a book", runner.state["page"]["actions"][1], runner.state["page"], [])
+    assert ctx1 == ctx2  # distinct elements, identical helper input
+    helper = Mock(side_effect=[("John", {"model": "test", "latency_ms": 10}),
+                               ("Jane", {"model": "test", "latency_ms": 10})])
+    monkeypatch.setattr(loop, "field_text", helper)
+    runner.state["browser"].act.side_effect = [StalePage("Changed before input"), {"executed": "e2"}]
+    with pytest.raises(StalePage):
+        runner.command("act", {"fingerprint": runner.state["page"]["fingerprint"]})
+    # The next decision picks the other same-labeled field; the cache must miss.
+    runner.state["decision"] = decision("e2")
+    runner.command("act", {"fingerprint": runner.state["page"]["fingerprint"]})
+    assert helper.call_count == 2
+    typed = [c.kwargs["text"] for c in runner.state["browser"].act.call_args_list]
+    assert typed == ["John", "Jane"]
+    assert runner.pending_text is None
+
+
+def test_stale_text_cache_does_not_cross_navigation(runner, monkeypatch):
+    """A cached value must not survive a full navigation: node ids restart at 1
+    in the new document (window.__jevFast re-inits), so the same node id can name
+    a different element. The cache key carries the document-scoped marker token.
+    """
+    runner.state["page"]["actions"] = [
+        {"id": "e1", "kind": "fill", "label": "Name", "role": "textbox", "value": "", "node": 10},
+        {"id": "wait", "kind": "wait", "label": "Wait"},
+    ]
+    runner.state["page"]["fingerprint"] = fingerprint(runner.state["page"])
+    old = runner.state["page"]
+    ctx1 = model.field_context("Find a book", old["actions"][0], old, [])
+    # New document: byte-identical url/title/text and the same node id for the
+    # same-labeled field, but a fresh performance.timeOrigin (marker[0]).
+    new = deepcopy(old)
+    new["marker"] = [9999.0, "https://example.test/", 0, 0, 1280, 800, None, None, None, None, 0.0]
+    new["fingerprint"] = fingerprint(new)
+    ctx2 = model.field_context("Find a book", new["actions"][0], new, [])
+    assert ctx1 == ctx2  # identical helper input, different document
+    helper = Mock(side_effect=[("John", {"model": "test", "latency_ms": 10}),
+                               ("Jane", {"model": "test", "latency_ms": 10})])
+    monkeypatch.setattr(loop, "field_text", helper)
+    runner.state["browser"].act.side_effect = [StalePage("Changed before input"), {"executed": "e1"}]
+    with pytest.raises(StalePage):
+        runner.command("act", {"fingerprint": old["fingerprint"]})
+    # The tick handler re-observes after navigation; the decision picks the
+    # same-labeled field in the new document. The cache must miss.
+    runner.state["page"] = new
+    runner.state["decision"] = decision("e1")
+    runner.command("act", {"fingerprint": new["fingerprint"]})
+    assert helper.call_count == 2
+    typed = [c.kwargs["text"] for c in runner.state["browser"].act.call_args_list]
+    assert typed == ["John", "Jane"]
+    assert runner.pending_text is None
+
+
+def frame_page(frame_markers):
+    p = page()
+    p["actions"] = [
+        {"id": "e1", "kind": "fill", "label": "Name", "role": "textbox", "value": "", "node": 10},
+        {"id": "e2", "kind": "fill", "label": "Name", "role": "textbox", "value": "", "node": 3,
+         "frame": "F1", "frame_node": 40},
+        {"id": "e3", "kind": "fill", "label": "Name", "role": "textbox", "value": "", "node": 3,
+         "frame": "F2", "frame_node": 41},
+        {"id": "wait", "kind": "wait", "label": "Wait"},
+    ]
+    p["frames"] = [{"id": frame, "marker": marker} for frame, marker in frame_markers.items()]
+    p["fingerprint"] = fingerprint(p)
+    return p
+
+
+def retry_fill(runner, monkeypatch, first, second, second_page=None):
+    """Fill `first`, reject it as stale before input, then fill `second`. Return the typed values."""
+    helper = Mock(side_effect=[("John", {"model": "test", "latency_ms": 10}),
+                               ("Jane", {"model": "test", "latency_ms": 10})])
+    monkeypatch.setattr(loop, "field_text", helper)
+    runner.state["browser"].act.side_effect = [StalePage("Changed before input"), {"executed": second}]
+    runner.state["decision"] = decision(first)
+    with pytest.raises(StalePage):
+        runner.command("act", {"fingerprint": runner.state["page"]["fingerprint"]})
+    if second_page:
+        runner.state["page"] = second_page
+    runner.state["decision"] = decision(second)
+    runner.command("act", {"fingerprint": runner.state["page"]["fingerprint"]})
+    assert runner.pending_text is None
+    return [c.kwargs["text"] for c in runner.state["browser"].act.call_args_list]
+
+
+def test_stale_text_cache_does_not_cross_frames_with_the_same_node_number(runner, monkeypatch):
+    # Frame nodes are numbered per frame: both fields are node 3, with identical helper input.
+    p = runner.state["page"] = frame_page({"F1": [1.0], "F2": [1.0]})
+    assert model.field_context("g", p["actions"][1], p, []) == model.field_context("g", p["actions"][2], p, [])
+    assert retry_fill(runner, monkeypatch, "e2", "e3") == ["John", "Jane"]
+
+
+def test_stale_text_cache_follows_the_frame_document_not_the_top_page(runner, monkeypatch):
+    runner.state["page"] = frame_page({"F1": [1.0]})
+    navigated = frame_page({"F1": [2.0]})  # Only the frame navigated; the top marker is unchanged.
+    assert navigated["marker"] == runner.state["page"]["marker"]
+    assert retry_fill(runner, monkeypatch, "e2", "e2", navigated) == ["John", "Jane"]
+
+
+def test_stale_text_cache_survives_a_top_page_change_inside_an_unchanged_frame(runner, monkeypatch):
+    runner.state["page"] = frame_page({"F1": [1.0]})
+    scrolled = frame_page({"F1": [1.0]})
+    scrolled["marker"] = [1234.0, "https://example.test/", 0, 500, 1280, 800, None, None, None, None, 0.0]
+    assert retry_fill(runner, monkeypatch, "e2", "e2", scrolled) == ["John", "John"]
+
+
+def test_stale_text_cache_does_not_cross_from_a_frame_field_to_the_top_page(runner, monkeypatch):
+    runner.state["page"] = frame_page({"F1": [1234.0]})
+    assert retry_fill(runner, monkeypatch, "e2", "e1") == ["John", "Jane"]
 
 
 def test_loading_waits_do_not_trigger_no_progress_stop(runner):
@@ -662,6 +800,7 @@ def test_flight_verification_rejects_wrong_trip(changed):
     "content", [
         "Thinking: Zurich", '{"text":null}', '{"text":"Zurich","extra":true}', '{"text":123}',
         '{"text":false}', '{"text":0}', '{}', json.dumps({"text": "a" * 2001}),
+        '```json\n{"text":null}\n```', 'Here you go:\n```json\n{"text":"Zurich"}\n```', "```json\n```", None,
     ]
 )
 def test_text_helper_rejects_invalid_values(runner, monkeypatch, content):
