@@ -22,8 +22,9 @@ source = args.source.resolve()
 state = json.loads((source / "state.json").read_text())
 assert state["verification"]["passed"] and not state["recording_errors"]
 assert all(h.get("execution") != "unknown" for h in state["history"]), "Cannot render unconfirmed execution timing"
-frames = [(0, Image.open(source / "frames/000000.jpg").convert("RGB"))]
-frames += sorted((int(p.stem), Image.open(p).convert("RGB")) for p in (source / "screencast").glob("*.jpg"))
+# Source frames stay on disk; only the one on screen is decoded, so memory does not grow with the run.
+frames = [(0, source / "frames/000000.jpg")]
+frames += sorted((int(p.stem), p) for p in (source / "screencast").glob("*.jpg"))
 end = state["elapsed_ms"]
 history = state["history"]
 # The departure is computed per run, so label it from the recorded goal, e.g. "29 October".
@@ -139,15 +140,23 @@ def mono(n):
     return ImageFont.truetype("/System/Library/Fonts/Menlo.ttc", n)
 
 
+def load_frame(path):
+    with Image.open(path) as image:
+        return image.convert("RGB")
+
+
 def decision_latency(t):
     latencies = [x["latency_ms"] for x in state["decisions"] if x["elapsed_ms"] <= t]
     return (f"{statistics.median(latencies):.0f} ms" if latencies else "—"), "median decision latency"
 
 
 ink, muted, green = "#172a20", "#6a766c", "#2a743f"
+shown, screenshot = None, None
 for i in range(round((end + 500) * 30 / 1000)):
     t = min(end, round(i * 1000 / 30))
-    screenshot = next(im for ts, im in reversed(frames) if ts <= t)
+    path = next(path for ts, path in reversed(frames) if ts <= t)
+    if path != shown:
+        shown, screenshot = path, load_frame(path)
     canvas = Image.new("RGB", (1536, canvas_height), "#f3f4ec")
     d = ImageDraw.Draw(canvas)
     d.text((36, 26), "browser use", font=font(23, True), fill=ink)

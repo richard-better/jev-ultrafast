@@ -34,8 +34,9 @@ def load(folder, label):
     assert state["verification"]["passed"] and not state["recording_errors"], folder
     assert state.get("task") == "cheapest", "Both takes must be cheapest-flight recordings"
     assert all(h.get("execution") != "unknown" for h in state["history"]), "Cannot render unconfirmed execution timing"
-    frames = [(0, Image.open(folder / "frames/000000.jpg").convert("RGB"))]
-    frames += sorted((int(p.stem), Image.open(p).convert("RGB")) for p in (folder / "screencast").glob("*.jpg"))
+    # Source frames stay on disk; the render loop decodes each one only when it is shown.
+    frames = [(0, folder / "frames/000000.jpg")]
+    frames += sorted((int(p.stem), p) for p in (folder / "screencast").glob("*.jpg"))
     history = state["history"]
 
     def acted(match, after=None):
@@ -81,7 +82,9 @@ def main():
     longest = max(run["end"] for run in runs)
     model = runs[0]["state"]["text_calls"][0]["model"].split("/")[-1]
 
-    def view(image):
+    def view(path):
+        with Image.open(path) as source:
+            image = source.convert("RGB")
         scale = image.width / view_width
         cropped = image.crop((0, round(64 * scale), image.width, round(view_height * scale)))
         return cropped.resize((PANEL, panel_height), Image.LANCZOS)
@@ -108,11 +111,11 @@ def main():
             d.rounded_rectangle((x - 1, top - 16, x + PANEL + 1, top + panel_height + 1), radius=12, fill=dark)
             for j, c in enumerate(["#de8278", "#d6bd6e", "#8dbd8a"]):
                 d.ellipse((x + 14 + j * 17, top - 11, x + 22 + j * 17, top - 3), fill=c)
-            timestamp, frame = next((ts, im) for ts, im in reversed(run["frames"]) if ts <= local)
+            timestamp, path = next((ts, p) for ts, p in reversed(run["frames"]) if ts <= local)
             key = (n, timestamp)
             if key not in cache:
                 cache.clear() if len(cache) > 8 else None
-                cache[key] = view(frame)
+                cache[key] = view(path)
             canvas.paste(cache[key], (x, top))
             if done:
                 d.rounded_rectangle((x + PANEL - 330, top + 16, x + PANEL - 16, top + 70), radius=14, fill="#dfeeda")
