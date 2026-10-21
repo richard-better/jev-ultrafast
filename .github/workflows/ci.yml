@@ -61,5 +61,8 @@ jobs:
           node --check jev_ultrafast/static/app.js
           node --check jev_ultrafast/snapshot.js
 
+      - name: Run offline inspector tests
+        run: node --test tests/test_interrupted_ui.cjs tests/test_server_disconnect_ui.mjs
+
       - name: Build package
         run: uv build

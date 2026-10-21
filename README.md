@@ -175,7 +175,7 @@ uv run ruff check .
 uv run pytest
 node --check jev_ultrafast/static/app.js
 node --check jev_ultrafast/snapshot.js
-node --test tests/test_interrupted_ui.cjs
+node --test tests/test_interrupted_ui.cjs tests/test_server_disconnect_ui.mjs
 uv build
 ```
 

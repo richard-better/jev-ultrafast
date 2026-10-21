@@ -17,6 +17,7 @@ class FakeElement {
     this.disabled = false;
     this.hidden = false;
     this.innerHTML = "";
+    this.style = {};
     this.listeners = new Map();
     this.textContent = "";
     this.value = "";
@@ -24,6 +25,12 @@ class FakeElement {
 
   addEventListener(name, listener) {
     this.listeners.set(name, listener);
+  }
+
+  querySelector(selector) {
+    this.children ??= new Map();
+    if (!this.children.has(selector)) this.children.set(selector, new FakeElement());
+    return this.children.get(selector);
   }
 }
 
@@ -88,7 +95,7 @@ async function load(responses) {
     URL: { createObjectURL: () => "blob:test", revokeObjectURL: () => {} },
     document: {
       createElement: () => ({ click() {} }),
-      getElementById: (id) => elements[id],
+      getElementById: (id) => (elements[id] ??= new FakeElement()),
       querySelector: () => ({ content: "test-token" }),
       querySelectorAll: () => [],
     },
