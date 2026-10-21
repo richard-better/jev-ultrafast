@@ -5,7 +5,7 @@ Read README.md before editing. Keep the loop small: page -> indexed elements -> 
 - The input is one natural-language goal. Do not add site-specific plans or hardcoded field values.
 - TypeSafe chooses an operation and operation-specific target heads in one request. Consume only the selected operation's target.
 - Targets must map to observed elements and supported operations. Never let the model emit selectors or executable code.
-- TYPE_TEXT invokes the text LLM. Cache a stale retry's value only while its entire helper input is identical.
+- TYPE_TEXT invokes the text LLM. Cache a stale retry's value only while its entire helper input is identical and it is for the same field: the same node in the same document. Keep that identity in code, out of the helper input.
 - Never retry a browser mutation. Log execution before observing its result.
 - If execution is interrupted without a pre-input stale rejection, stop the run and preserve an unknown execution record. Inspect the page before starting over; a missing reply is not evidence of no side effect.
 - Interruption checks must require stopped commands to reject explicitly. Error UI must distinguish a new unknown execution from an older stopped run retained after a failed reset.

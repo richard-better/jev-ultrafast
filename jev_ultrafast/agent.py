@@ -25,6 +25,16 @@ def stalled(history):
     )
 
 
+def text_key(action, page):
+    """Code-side identity of the field a generated value is for. It never reaches a model.
+
+    Same-labeled fields can build identical helper input, so a cached value is also keyed by
+    the field's node. Node numbers restart after a navigation, so the key also carries the
+    document's timeOrigin.
+    """
+    return action["node"], page["marker"][0]
+
+
 class Agent:
     def __init__(self, url, goals, *, record_dir=None, screenshots=False, max_steps=MAX_STEPS):
         task = goals.strip() if isinstance(goals, str) else "\n".join(goals).strip()
@@ -138,11 +148,12 @@ class Agent:
                 if not state["browser"].fresh(page):
                     raise StalePage("Page changed before text generation. Choose again.")
                 context = field_context(state["goal"], action, page, state["history"])
-                if self.pending_text and self.pending_text[0] == context:
-                    _, text, helper = self.pending_text
+                key = text_key(action, page)
+                if self.pending_text and self.pending_text[:2] == (key, context):
+                    _, _, text, helper = self.pending_text
                 else:
                     text, helper = field_text(context)
-                    self.pending_text = (context, text, helper)
+                    self.pending_text = (key, context, text, helper)
                     state["text_calls"].append({**helper, "field": action["label"], "value": text})
             # Browser.act checks freshness immediately before input, including after text generation.
             execution_error = None
