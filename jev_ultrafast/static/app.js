@@ -2,7 +2,8 @@ const $ = (id) => document.getElementById(id);
 const token = document.querySelector('meta[name="demo-token"]').content;
 let state = null,
   busy = false,
-  automatic = false;
+  automatic = false,
+  connected = false;
 const goals = {
   flights: '__FLIGHTS_GOAL__',
   travel: 'Find a Design stay in Lisbon with Free cancellation and open Casa Flora.',
@@ -18,21 +19,58 @@ const escape = (value) =>
       ],
   );
 const percent = (value) => `${(value * 100).toFixed(value < 0.01 ? 1 : 0)}%`;
+const isServerState = (value) =>
+  value !== null &&
+  typeof value === "object" &&
+  !Array.isArray(value) &&
+  typeof value.status === "string" &&
+  Array.isArray(value.history) &&
+  Object.hasOwn(value, "page") &&
+  Object.hasOwn(value, "decision");
+// Browser mutations: if one of these gets no valid reply, it may still have run.
+const mutations = new Set(["act", "tick"]);
+const unconfirmedNotice =
+  "The server stopped answering before confirming the browser action. It may already have changed the page; inspect the browser before continuing. Nothing was retried.";
+// History length when a browser mutation lost its reply while the server was
+// unreachable, or null. Only the server's own record of the action settles it.
+let unconfirmedFrom = null;
+async function responseState(response) {
+  let data;
+  try {
+    data = await response.json();
+  } catch {
+    throw Error("Invalid response from local demo server");
+  }
+  if (!response.ok) {
+    throw Object.assign(Error(data?.error || `Request failed (${response.status})`), { answered: true });
+  }
+  if (!isServerState(data)) throw Error("Invalid response from local demo server");
+  return data;
+}
+async function readState() {
+  return responseState(await fetch("/api/state"));
+}
 async function call(name, body = {}) {
-  const response = await fetch(`/api/${name}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Demo-Token": token },
-    body: JSON.stringify(body),
-  });
-  const data = await response.json();
-  if (!response.ok) throw Error(data.error || "Request failed");
+  let data;
+  try {
+    const response = await fetch(`/api/${name}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Demo-Token": token },
+      body: JSON.stringify(body),
+    });
+    data = await responseState(response);
+  } catch (error) {
+    if (mutations.has(name) && !error.answered) error.unconfirmed = true;
+    throw error;
+  }
   state = data;
+  connected = true;
   render();
   return data;
 }
 function controls() {
-  const live = state?.page && !["done", "blocked"].includes(state.status);
-  $("start").disabled = busy;
+  const live = connected && state?.page && !["done", "blocked"].includes(state.status);
+  $("start").disabled = busy || !connected;
   $("scenario").disabled = busy;
   $("goal").disabled = busy;
   $("choose").disabled = busy || !live;
@@ -41,11 +79,33 @@ function controls() {
   $("auto").hidden = automatic;
   $("stop").hidden = !automatic;
   $("download").disabled = !(state?.history?.length || state?.decisions?.length);
+  $("retry").disabled = busy;
+  $("retry").hidden = connected;
+}
+function showError(message) {
+  $("error").textContent = message;
+  $("error").hidden = false;
+}
+// Read the server's state once; never replay the request that failed. Returns
+// the read error, or null once validated state is live.
+async function refresh() {
+  let fresh;
+  try {
+    fresh = await readState();
+  } catch (error) {
+    connected = false;
+    return error;
+  }
+  state = fresh;
+  connected = true;
+  render();
+  return null;
 }
 async function perform(fn, label) {
   if (busy) return;
   const historyLength = state?.history?.length ?? 0;
   busy = true;
+  unconfirmedFrom = null;
   $("error").hidden = true;
   controls();
   $("status").textContent = label;
@@ -53,19 +113,48 @@ async function perform(fn, label) {
     await fn();
   } catch (error) {
     automatic = false;
-    try {
-      state = await fetch("/api/state").then((r) => r.json());
-      render();
-    } catch {
-      /* Preserve the original failure if the server disconnected. */
+    await refresh();
+    if (!connected && error.unconfirmed) {
+      unconfirmedFrom = state?.history?.length ?? 0;
+      showError(`${error.message}. ${unconfirmedNotice}`);
+      $("status").textContent = "Disconnected · the action may have executed";
+    } else {
+      showError(error.message);
+      const interrupted = (state?.history?.length ?? 0) > historyLength &&
+        state.history.at(-1).execution === "unknown";
+      $("status").textContent = !connected
+        ? "Cannot reach local demo server"
+        : interrupted
+          ? "Stopped · inspect the interrupted action"
+          : "Paused · needs attention";
     }
-    $("error").textContent = error.message;
-    $("error").hidden = false;
-    const interrupted = (state?.history?.length ?? 0) > historyLength &&
-      state.history.at(-1).execution === "unknown";
-    $("status").textContent = interrupted
-      ? "Stopped · inspect the interrupted action"
-      : "Paused · needs attention";
+  } finally {
+    busy = false;
+    controls();
+  }
+}
+async function retryConnection() {
+  if (busy) return;
+  busy = true;
+  $("error").hidden = true;
+  $("status").textContent = "Connecting to local demo server…";
+  controls();
+  try {
+    const error = await refresh();
+    if (error) {
+      showError(unconfirmedFrom === null ? error.message : `${error.message}. ${unconfirmedNotice}`);
+      $("status").textContent = unconfirmedFrom === null
+        ? "Cannot reach local demo server"
+        : "Disconnected · the action may have executed";
+    } else if (unconfirmedFrom !== null) {
+      // A longer history is the server's own record of the action. Without one,
+      // the server may have restarted and lost track of the request.
+      if (state.history.length <= unconfirmedFrom) {
+        showError(unconfirmedNotice);
+        $("status").textContent = "Reconnected · inspect the browser first";
+      }
+      unconfirmedFrom = null;
+    }
   } finally {
     busy = false;
     controls();
@@ -206,6 +295,7 @@ $("stop").addEventListener("click", () => {
   $("status").textContent = "Pausing after the current request…";
   controls();
 });
+$("retry").addEventListener("click", retryConnection);
 $("overlays").addEventListener("change", () => {
   $("targets").hidden = !state?.page?.screenshot || !$("overlays").checked;
 });
@@ -249,12 +339,4 @@ $("download").addEventListener("click", () => {
   a.click();
   URL.revokeObjectURL(url);
 });
-fetch("/api/state")
-  .then((r) => r.json())
-  .then((s) => {
-    state = s;
-    render();
-  })
-  .catch(() => {
-    $("status").textContent = "Cannot reach local demo server";
-  });
+retryConnection();

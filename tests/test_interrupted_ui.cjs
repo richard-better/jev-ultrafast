@@ -26,13 +26,25 @@ function inspector() {
     history: [{ step: 1, action: 'Submit', execution: 'unknown', executed_ms: null,
       page_changed: null, latency_ms: 10, probability: 1 }],
   };
-  const context = vm.createContext({ document, fetch: () => new Promise(() => {}) });
+  return { nodes, document, stopped };
+}
+
+// Load the inspector the way the page does: its first GET /api/state answers with `initial`.
+async function load({ nodes, document, stopped }, initial) {
+  const context = vm.createContext({
+    document,
+    fetch: async () => ({ ok: true, json: async () => structuredClone(initial) }),
+  });
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../jev_ultrafast/static/app.js'), 'utf8'), context);
+  await new Promise(resolve => setImmediate(resolve));
   return { nodes, context, stopped };
 }
 
 test('an interrupted action remains stopped after the inspector refreshes its state', async () => {
-  const { nodes, context, stopped } = inspector();
+  const fixture = inspector();
+  const live = { ...fixture.stopped, status: 'ready', history: [] };
+  const { nodes, context, stopped } = await load(fixture, live);
+  assert.equal(nodes.get('choose').disabled, false);
   context.fetch = async url => ({
     ok: url === '/api/state',
     json: async () => url === '/api/state' ? stopped : { error: 'Lost reply' },
@@ -48,9 +60,8 @@ test('an interrupted action remains stopped after the inspector refreshes its st
 });
 
 test('a failed reset reports its own error without attributing the old interruption to it', async () => {
-  const { nodes, context, stopped } = inspector();
-  context.initialState = stopped;
-  vm.runInContext('state = initialState; render()', context);
+  const fixture = inspector();
+  const { nodes, context, stopped } = await load(fixture, fixture.stopped);
   const requests = [];
   context.fetch = async url => {
     requests.push(url);

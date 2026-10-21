@@ -144,6 +144,12 @@ cannot replay the interrupted action. Pre-input stale-page rejections remain
 retryable, and failures while observing an already-confirmed action retain its
 execution record.
 
+The inspector keeps browser actions disabled until the local server returns valid
+state. If the server stops answering during an execute or automatic step, the
+inspector says the action may have executed, offers **Retry connection**, and
+recovers with a single `GET /api/state`; it never resends the lost request. The
+warning stays until the reconnected server shows its own record of the action.
+
 ## URL maps (experimental)
 
 Where a site's pages can be expressed as a URL, such as search results, a URL map lets the loop open them directly instead of filling the form. Load maps with `Agent(url, goal, url_map="examples/maps/google-flights.json")` or `JEV_URL_MAP` (several paths separated by `:`).
@@ -175,7 +181,7 @@ uv run ruff check .
 uv run pytest
 node --check jev_ultrafast/static/app.js
 node --check jev_ultrafast/snapshot.js
-node --test tests/test_interrupted_ui.cjs
+node --test tests/test_interrupted_ui.cjs tests/test_server_disconnect_ui.mjs
 uv build
 ```
 

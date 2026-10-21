@@ -19,4 +19,4 @@ Read README.md before editing. Keep the loop small: page -> indexed elements -> 
 - Do not commit or push unless the user requests it.
 
 Checks: uv run ruff check ., uv run pytest, node --check jev_ultrafast/static/app.js, uv build.
-Execution interruption checks: node --test tests/test_interrupted_ui.cjs and uv run python scripts/check_interrupted_actions.py (local browser, no model calls).
+Execution interruption checks: node --test tests/test_interrupted_ui.cjs tests/test_server_disconnect_ui.mjs and uv run python scripts/check_interrupted_actions.py (local browser, no model calls).
