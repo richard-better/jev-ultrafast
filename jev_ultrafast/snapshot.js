@@ -20,8 +20,14 @@
   cache.within=(e,n)=>{ for (; n; n=n.parentNode || n.host) if (n===e) return true; return false; };
   cache.active=()=>{ let a=document.activeElement; while (a?.shadowRoot?.activeElement) a=a.shadowRoot.activeElement; return a; };
   const safe = e => !['password','file','hidden'].includes(e.type);
-  const visible = e => !e.closest('[aria-hidden="true"],[inert]') &&
-    e.checkVisibility({checkOpacity:true,checkVisibilityCSS:true});
+  // Menus often use a transparent checkbox laid over an icon (the CSS checkbox hack). It is the real
+  // hit target, so it counts as visible while it is the topmost element at its own centre.
+  const toggleOnTop = e => e.matches('input[type=checkbox],input[type=radio]') &&
+    e.checkVisibility({checkVisibilityCSS:true}) && (r => r.width>0 && r.height>0 &&
+      cache.within(e,cache.hit(r.x+r.width/2,r.y+r.height/2)))(e.getBoundingClientRect());
+  // The executor rechecks targets with this same rule, so what is offered stays clickable.
+  const visible = cache.visible = e => !e.closest('[aria-hidden="true"],[inert]') &&
+    (e.checkVisibility({checkOpacity:true,checkVisibilityCSS:true}) || toggleOnTop(e));
   const name = (e,seen=new Set()) => {
     if (!e || seen.has(e)) return '';
     seen.add(e);

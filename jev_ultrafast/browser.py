@@ -478,7 +478,7 @@ def browser_operation(request):
                 target = evaluate("""(action => {
                   const cache=window.__jevFast, e=cache?.nodes.get(action.node);
                   if (!e?.isConnected || e.matches(':disabled') || e.closest('[aria-disabled="true"],[inert]') ||
-                      !e.checkVisibility({checkOpacity:true,checkVisibilityCSS:true})) return null;
+                      !cache.visible(e)) return null;
                   if (action.kind==='fill' && !cache.editable(e)) return null;
                   const r=e.getBoundingClientRect();
                   let x=r.x+r.width/2, y=r.y+r.height/2;
