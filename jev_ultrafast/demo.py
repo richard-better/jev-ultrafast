@@ -3,6 +3,7 @@
 import atexit
 import json
 import os
+import re
 import secrets
 import sys
 import threading
@@ -35,16 +36,25 @@ def load_environment():
     # utf-8-sig also drops a leading byte-order mark, which editors on Windows write by
     # default and which would otherwise become part of the first key.
     for line in path.read_text(encoding="utf-8-sig").splitlines():
-        entry = line.strip().removeprefix("export ").strip()
+        entry = re.sub(r"^export\s+", "", line.strip())
         if not entry or entry.startswith("#") or "=" not in entry:
             continue
         key, value = entry.split("=", 1)
-        key, value = key.strip(), value.strip()
-        # Quotes delimit the value; whitespace inside them is part of it.
-        if len(value) > 1 and value[0] == value[-1] and value[0] in ('"', "'"):
-            value = value[1:-1]
+        key = key.strip()
         if key:
-            os.environ.setdefault(key, value)
+            os.environ.setdefault(key, environment_value(value))
+
+
+def environment_value(raw):
+    """Quotes delimit a value; outside them, whitespace followed by # starts a comment."""
+    value = raw.strip()
+    if value[:1] in ('"', "'"):
+        end = value.find(value[0], 1)
+        rest = value[end + 1:].strip() if end > 0 else None
+        if rest is not None and (not rest or rest.startswith("#")):
+            return value[1:end]
+    comment = re.search(r"\s#", value)
+    return (value[:comment.start()] if comment else value).strip()
 
 
 def configure_environment():
