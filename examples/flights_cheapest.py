@@ -89,3 +89,35 @@ def verify(page, history, cheapest):
         "lowest_listed_price": cheapest["price"] if cheapest else None,
         "booking_offers": offers,
     }
+
+
+def verify_settled(browser, page, history, listed=cheapest_listed, settle_s=10, check=None,
+                   reached="booking_page"):
+    """verify() on the page as the run left it, then again while a booking page is still filling in.
+
+    `strict_passed` is the first, immediate result. A page that reached the final page's URL (the check
+    named by `reached`) but had not finished loading gets up to `settle_s` seconds to pass;
+    `settled_after_ms` says how long that took,
+    so a run that stopped early is visible instead of being either hidden or failed for the check's
+    timing. An unreadable cheapest-flight list is retried, then reported as `cheapest_unavailable`
+    (the run could not be checked) rather than as an agent failure.
+    """
+    check = check or verify
+    cheapest = None
+    for _ in range(3):
+        cheapest = listed()
+        if cheapest:
+            break
+    result = check(page, history, cheapest)
+    result.update(strict_passed=result["passed"], settled_after_ms=None, cheapest_unavailable=cheapest is None)
+    if result["passed"] or cheapest is None or not result["checks"][reached]:
+        return result
+    start = time.monotonic()
+    while time.monotonic() - start < settle_s:
+        time.sleep(0.5)
+        settled = check(browser.observe(screenshot=False), history, cheapest)
+        if settled["passed"]:
+            settled.update(strict_passed=False, cheapest_unavailable=False)
+            settled["settled_after_ms"] = round((time.monotonic() - start) * 1000)
+            return settled
+    return result

@@ -13,8 +13,9 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--source", default=".")
 parser.add_argument("--output", required=True)
 parser.add_argument(
-    "--task", choices=["search", "cheapest"], default="search",
-    help="search: show results for the route and date; cheapest: select the cheapest flight's booking options",
+    "--task", choices=["search", "cheapest", "kiwi"], default="search",
+    help="search: show results for the route and date; cheapest: select the cheapest flight's booking options; "
+         "kiwi: the same cheapest-flight goal on Kiwi.com, stopping at its trip details",
 )
 args = parser.parse_args()
 source = Path(args.source).resolve()
@@ -29,12 +30,19 @@ except ImportError:
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 if args.task == "cheapest":
-    from examples.flights_cheapest import GOALS, URL, cheapest_listed  # noqa: E402
-    from examples.flights_cheapest import verify as verify_booking  # noqa: E402
+    from examples.flights_cheapest import GOALS, URL, cheapest_listed, verify_settled  # noqa: E402
 
     def verify(page, state):
         # The cheapest listed flights are read in a separate tab after the run, outside the measured time.
-        return verify_booking(page, state["history"], cheapest_listed())
+        return verify_settled(agent.browser, page, state["history"], cheapest_listed)
+elif args.task == "kiwi":
+    from examples.flights_cheapest import verify_settled  # noqa: E402
+    from examples.kiwi_cheapest import GOALS, REACHED, URL, cheapest_listed, isolate  # noqa: E402
+    from examples.kiwi_cheapest import verify as verify_kiwi  # noqa: E402
+
+    def verify(page, state):
+        return verify_settled(agent.browser, page, state["history"], cheapest_listed, check=verify_kiwi,
+                              reached=REACHED)
 else:
     from examples.flights import GOALS, URL  # noqa: E402
     from examples.flights import verify as verify_search  # noqa: E402
@@ -62,6 +70,7 @@ def timed(method, *positional, **kwargs):
 
 
 browser_module.cdp = timed
+close_context = isolate(browser_module) if args.task == "kiwi" else None  # Kiwi prefills its form otherwise.
 agent = Agent(URL, GOALS)
 # Setup is excluded in both arms, as in the original demo.
 calls.clear()
@@ -115,6 +124,8 @@ finally:
             if error:
                 agent.trace.set_attribute("jev.error", error.split(":", 1)[0])
         agent.close()
+        if close_context:
+            close_context()
     if finalization_error is not None:
         raise finalization_error
 print("VERIFIED", state["verification"]["passed"], "ERROR", error, flush=True)

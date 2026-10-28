@@ -4,7 +4,7 @@ import base64
 
 import pytest
 
-from examples.flights_cheapest import DEPARTURE, GOALS, flight, verify
+from examples.flights_cheapest import DEPARTURE, GOALS, flight, verify, verify_settled
 
 EASYJET = ("Leaves Zurich Airport at 11:20 AM on Thursday, October 29 and arrives at London Gatwick Airport "
            "at 12:05 PM on Thursday, October 29.")
@@ -67,3 +67,44 @@ def test_the_results_page_is_not_the_booking_page():
 def test_the_goal_names_the_task_not_a_plan():
     assert DEPARTURE.long in GOALS and "cheapest" in GOALS and "Do not continue to any booking site" in GOALS
     assert "Cheapest tab" not in GOALS and "Select flight" not in GOALS
+
+
+class Pages:
+    """A browser that shows each page in turn, the last one repeatedly."""
+
+    def __init__(self, *pages):
+        self.pages = list(pages)
+
+    def observe(self, screenshot=True):
+        return self.pages.pop(0) if len(self.pages) > 1 else self.pages[0]
+
+
+def test_a_booking_page_that_finishes_loading_passes_and_says_it_was_late():
+    result = verify_settled(Pages(booking_page()), booking_page(loading=True), SELECTED, lambda: CHEAPEST)
+    assert result["passed"]
+    assert result["strict_passed"] is False
+    assert result["settled_after_ms"] is not None
+
+
+def test_a_booking_page_that_never_finishes_loading_still_fails(monkeypatch):
+    result = verify_settled(Pages(booking_page(loading=True)), booking_page(loading=True), SELECTED,
+                            lambda: CHEAPEST, settle_s=1)
+    assert not result["passed"]
+    assert result["settled_after_ms"] is None
+
+
+def test_an_immediate_pass_is_strict():
+    result = verify_settled(Pages(), booking_page(), SELECTED, lambda: CHEAPEST)
+    assert result["passed"] and result["strict_passed"]
+
+
+def test_an_unreadable_cheapest_list_is_retried_then_reported_as_unverifiable():
+    reads = []
+
+    def unreadable():
+        reads.append(1)
+
+    result = verify_settled(Pages(), booking_page(), SELECTED, unreadable)
+    assert len(reads) == 3
+    assert result["cheapest_unavailable"] and not result["passed"]
+    assert verify_settled(Pages(), booking_page(), SELECTED, iter([None, CHEAPEST]).__next__)["passed"]

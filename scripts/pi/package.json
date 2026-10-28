@@ -1,0 +1,9 @@
+{
+  "name": "jev-pi-arm",
+  "private": true,
+  "type": "module",
+  "description": "Runs one goal through Browser Use Pi's ultrafast mode for scripts/compare_arms.py.",
+  "dependencies": {
+    "@browser_use/pi": "0.1.0"
+  }
+}

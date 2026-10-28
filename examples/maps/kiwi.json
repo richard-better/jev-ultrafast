@@ -1,0 +1,68 @@
+{
+  "name": "Kiwi.com",
+  "notes": "Kiwi opens results for a one-way search from place slugs in the path; plain city names only work for a browser Kiwi already knows. The places are a fixed list of major cities, and other cities are not covered. Entries open the results page only; choosing, selecting and continuing stay on the page.",
+  "entries": [
+    {
+      "id": "kiwi_one_way_results",
+      "description": "Kiwi.com results for a one-way trip by route and date, from a fixed list of major cities",
+      "url": "https://www.kiwi.com/en/search/results/{origin}/{destination}/{date}/no-return/",
+      "match": {
+        "path_prefix": "/en"
+      },
+      "parameters": {
+        "origin": {
+          "type": "choice",
+          "description": "Departure city",
+          "options": [
+            "zurich-switzerland",
+            "london-united-kingdom",
+            "paris-france",
+            "berlin-germany",
+            "amsterdam-netherlands",
+            "madrid-spain",
+            "barcelona-spain",
+            "rome-italy",
+            "milan-italy",
+            "vienna-austria",
+            "budapest-hungary",
+            "prague-czechia",
+            "lisbon-portugal",
+            "dublin-ireland",
+            "copenhagen-denmark",
+            "stockholm-sweden",
+            "athens-greece",
+            "new-york-city-new-york-united-states"
+          ]
+        },
+        "destination": {
+          "type": "choice",
+          "description": "Arrival city",
+          "options": [
+            "zurich-switzerland",
+            "london-united-kingdom",
+            "paris-france",
+            "berlin-germany",
+            "amsterdam-netherlands",
+            "madrid-spain",
+            "barcelona-spain",
+            "rome-italy",
+            "milan-italy",
+            "vienna-austria",
+            "budapest-hungary",
+            "prague-czechia",
+            "lisbon-portugal",
+            "dublin-ireland",
+            "copenhagen-denmark",
+            "stockholm-sweden",
+            "athens-greece",
+            "new-york-city-new-york-united-states"
+          ]
+        },
+        "date": {
+          "type": "date",
+          "description": "Departure date"
+        }
+      }
+    }
+  ]
+}
